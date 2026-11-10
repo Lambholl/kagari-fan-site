@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#050a1c" />
+    <meta name="description" content="篝：走上开满雏菊的山丘，去见在巨大用纸上演算的月之少女。" />
+    <title>月光散步 · 篝</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <div id="app" aria-label="三维场景"></div>
+
+    <div id="fade"></div>
+    <div id="flash"></div>
+    <div id="slash" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+    <div id="hud" hidden>
+      <div id="chapter-tag"></div>
+      <div id="converge" hidden></div>
+      <div id="top-buttons">
+        <button id="btn-sound" type="button" title="声音开关" aria-label="声音开关">♪</button>
+        <button id="btn-help" type="button" title="操作说明" aria-label="操作说明">?</button>
+      </div>
+      <div id="help" hidden>
+        <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 行走　<kbd>Shift</kbd> 奔跑</p>
+        <p><kbd>鼠标</kbd> 环视　<kbd>C</kbd> 坐下 / 起身</p>
+        <p><kbd>E</kbd> 行动　<kbd>空格</kbd> 推进文字</p>
+        <p><kbd>Esc</kbd> 释放鼠标</p>
+      </div>
+      <div id="prompt" hidden><kbd>E</kbd><span></span></div>
+      <div id="subtitle" hidden>
+        <div class="speaker"></div>
+        <p class="text"></p>
+      </div>
+      <div id="joystick" hidden><i></i></div>
+      <button id="btn-act" type="button" hidden></button>
+      <button id="btn-sit" type="button" hidden>坐下</button>
+    </div>
+
+    <div id="card" hidden>
+      <h2></h2>
+      <p></p>
+    </div>
+
+    <div id="pause" hidden><span>点击画面继续</span></div>
+
+    <section id="title">
+      <div class="title-inner">
+        <p class="eyebrow">Rewrite ── Moon</p>
+        <h1><span>月</span><span>光</span><span>散</span><span>步</span></h1>
+        <p class="lead">篝<small>Kagari</small></p>
+        <p class="desc">
+          睡不着的夜晚，开满黑白雏菊的山丘。<br />
+          山顶铺着大得难以置信的纸，一位少女伏在上面，演算着什么。
+        </p>
+        <div class="actions">
+          <button id="btn-start" type="button" disabled>正在铺开夜色…</button>
+          <button id="btn-free" type="button" class="ghost" disabled>自由漫步<small>跳过剧情</small></button>
+        </div>
+        <ul class="keys">
+          <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 行走</li>
+          <li><kbd>鼠标</kbd> 环视</li>
+          <li><kbd>E</kbd> 行动</li>
+          <li><kbd>C</kbd> 坐下</li>
+          <li class="touch-only">左半屏摇杆 · 右半屏环视</li>
+        </ul>
+        <p class="legal">
+          人物底模改编自
+          <a href="https://sketchfab.com/3d-models/clannad-furukawa-nagisa-428437e8f1c74fb994269729ec1a1bc6" target="_blank" rel="noopener">Furukawa Nagisa</a>
+          （<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>）<br />
+          《Rewrite》及其角色的著作权归 ©VISUAL ARTS/Key 所有。
+        </p>
+      </div>
+    </section>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
