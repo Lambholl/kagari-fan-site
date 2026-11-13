@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { makeNoise2D, fbm, mulberry32, smoothstep } from '../util/noise.js';
+import { createMoon } from './moon.js';
 
 /**
- * 月亮所在方向。玩家从南面（+z）上山，月亮悬在丘顶背后偏东，
- * 于是走上山丘时，她正好坐在月轮下方。
+ * 月轮的单位方向，世界坐标以 +y 为天顶、-z 为月面真北。
  */
 export const MOON_DIR = (() => {
   const az = THREE.MathUtils.degToRad(16); // 自正北(-z)向东(+x)偏转
@@ -13,62 +13,6 @@ export const MOON_DIR = (() => {
 
 const SKY_R = 1500;
 const MOON_ANGULAR_RADIUS = THREE.MathUtils.degToRad(10.5);
-
-function makeMoonTexture() {
-  const S = 1024;
-  const c = document.createElement('canvas');
-  c.width = c.height = S;
-  const ctx = c.getContext('2d');
-  const img = ctx.createImageData(S, S);
-  const n1 = makeNoise2D(301);
-  const n2 = makeNoise2D(302);
-  const n3 = makeNoise2D(303);
-  const R = S / 2 - 6;
-  for (let y = 0; y < S; y++) {
-    for (let x = 0; x < S; x++) {
-      const dx = (x - S / 2) / R;
-      const dy = (y - S / 2) / R;
-      const d = Math.hypot(dx, dy);
-      const i = (y * S + x) * 4;
-      if (d > 1.01) {
-        img.data[i + 3] = 0;
-        continue;
-      }
-      // 把圆盘当球面：让“海”的花纹在边缘被压扁，显得是个球
-      const zz = Math.sqrt(Math.max(0, 1 - d * d));
-      const sx = dx / (0.55 + 0.45 * zz);
-      const sy = dy / (0.55 + 0.45 * zz);
-      const big = fbm(n1, sx * 1.7 + 3.1, sy * 1.7 + 1.7, 5);
-      const mid = fbm(n2, sx * 5 + 9, sy * 5 - 4, 4);
-      const fine = fbm(n3, sx * 22, sy * 22, 3);
-      // 月海：淡青白的月面上，晕开的蓝色斑块
-      const mare = smoothstep(0.53, 0.66, big + (mid - 0.5) * 0.28);
-      let r = 214 + fine * 30;
-      let g = 238 + fine * 14;
-      let b = 250;
-      const mr = 70 + mid * 50;
-      const mg = 130 + mid * 50;
-      const mb = 205 + mid * 30;
-      r = r + (mr - r) * mare * 0.86;
-      g = g + (mg - g) * mare * 0.86;
-      b = b + (mb - b) * mare * 0.7;
-      // 细小的坑洼
-      const crater = smoothstep(0.66, 0.7, mid) * (1 - mare) * 22;
-      r -= crater;
-      g -= crater * 0.7;
-      const limb = 0.86 + 0.14 * zz;
-      img.data[i] = r * limb;
-      img.data[i + 1] = g * limb;
-      img.data[i + 2] = b * (0.95 + 0.05 * zz);
-      img.data[i + 3] = 255 * (1 - smoothstep(0.992, 1.006, d));
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  return tex;
-}
 
 function makeCloudTexture(seed) {
   const W = 512;
@@ -103,6 +47,10 @@ function makeCloudTexture(seed) {
   return tex;
 }
 
+/**
+ * 创建夜空、星点、月轮和地平线云，返回场景节点与更新方法。
+ * @returns {object} group 为天空节点，moon 为月轮节点。
+ */
 export function createSky() {
   const group = new THREE.Group();
   group.name = 'sky';
@@ -114,6 +62,7 @@ export function createSky() {
     fog: false,
     uniforms: {
       uMoonDir: { value: MOON_DIR.clone() },
+      uMoonRadius: { value: MOON_ANGULAR_RADIUS },
     },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
@@ -124,22 +73,23 @@ export function createSky() {
     `,
     fragmentShader: /* glsl */ `
       uniform vec3 uMoonDir;
+      uniform float uMoonRadius;
       varying vec3 vDir;
       void main() {
         vec3 d = normalize(vDir);
         float h = max(d.y, 0.0);
-        vec3 zen = vec3(0.006, 0.014, 0.055);
-        vec3 mid = vec3(0.016, 0.05, 0.16);
-        vec3 hor = vec3(0.045, 0.14, 0.30);
+        vec3 zen = vec3(0.0001, 0.00025, 0.0006);
+        vec3 mid = vec3(0.0004, 0.0010, 0.0026);
+        vec3 hor = vec3(0.0012, 0.0028, 0.0060);
         vec3 col = mix(hor, mid, smoothstep(0.0, 0.28, h));
         col = mix(col, zen, smoothstep(0.2, 0.95, h));
-        float md = max(dot(d, uMoonDir), 0.0);
-        // 月晕：把夜冲淡成青色
-        col += vec3(0.10, 0.30, 0.52) * pow(md, 5.0) * 0.55;
-        col += vec3(0.30, 0.55, 0.80) * pow(md, 28.0) * 0.55;
-        col += vec3(0.55, 0.80, 1.00) * pow(md, 160.0) * 0.6;
+        float md = clamp(dot(d, uMoonDir), -1.0, 1.0);
+        // 从月轮边缘向外连续衰减，避免外壳形成一圈硬边。
+        float outside = max(acos(md) - uMoonRadius, 0.0);
+        col += vec3(0.045, 0.085, 0.12) * exp(-outside / 0.009);
+        col += vec3(0.001, 0.002, 0.004) * exp(-outside / 0.045);
         // 地平线以下沉入黑暗
-        col = mix(col, vec3(0.012, 0.03, 0.07), 1.0 - smoothstep(-0.12, 0.0, d.y));
+        col = mix(col, vec3(0.0005, 0.0010, 0.0020), 1.0 - smoothstep(-0.12, 0.0, d.y));
         gl_FragColor = vec4(col, 1.0);
       }
     `,
@@ -194,6 +144,7 @@ export function createSky() {
       uniform mat3 uGroupRot;
       varying vec3 vColor;
       varying float vFade;
+      varying float vIntensity;
       void main() {
         vColor = color;
         vec3 wd = normalize(uGroupRot * position);
@@ -202,16 +153,21 @@ export function createSky() {
         vFade = smoothstep(-0.02, 0.22, wd.y) * (1.0 - smoothstep(0.80, 0.985, md));
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
         gl_Position = projectionMatrix * mv;
-        gl_PointSize = aSize * uPixelRatio;
+        // 扩大暗星的覆盖面积并降低峰值，减少亚像素移动造成的亮度跳变。
+        float size = max(aSize, 3.0);
+        vIntensity = (aSize * aSize) / (size * size);
+        gl_PointSize = size * uPixelRatio;
       }
     `,
     fragmentShader: /* glsl */ `
       varying vec3 vColor;
       varying float vFade;
+      varying float vIntensity;
       void main() {
         vec2 p = gl_PointCoord - 0.5;
-        float a = 1.0 - smoothstep(0.05, 0.5, length(p));
-        gl_FragColor = vec4(vColor * a * vFade, a * vFade);
+        float r2 = dot(p, p);
+        float a = exp(-18.0 * r2) * (1.0 - smoothstep(0.18, 0.25, r2));
+        gl_FragColor = vec4(vColor * vIntensity, a * vFade);
       }
     `,
   });
@@ -225,18 +181,9 @@ export function createSky() {
   group.add(starPivot);
 
   // —— 月 ——
-  const moonR = Math.tan(MOON_ANGULAR_RADIUS) * SKY_R * 0.9;
-  const moon = new THREE.Mesh(
-    new THREE.CircleGeometry(moonR, 96),
-    new THREE.MeshBasicMaterial({
-      map: makeMoonTexture(),
-      transparent: true,
-      depthWrite: false,
-      fog: false,
-      color: new THREE.Color(0.8, 0.8, 0.8),
-    }),
-  );
-  moon.renderOrder = -18;
+  const moonR = Math.sin(MOON_ANGULAR_RADIUS) * SKY_R * 0.9;
+  const lunar = createMoon(moonR, MOON_DIR);
+  const moon = lunar.group;
   moon.frustumCulled = false;
   group.add(moon);
 
@@ -260,7 +207,7 @@ export function createSky() {
       depthWrite: false,
       fog: false,
       opacity: 0.55 + rand() * 0.3,
-      color: new THREE.Color(0.2 * lit + 0.02, 0.42 * lit + 0.035, 0.7 * lit + 0.07),
+      color: new THREE.Color(0.025 * lit + 0.001, 0.04 * lit + 0.002, 0.065 * lit + 0.004),
     });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, hgt), mat);
     mesh.position.copy(dir).multiplyScalar(dist);
@@ -278,16 +225,25 @@ export function createSky() {
   return {
     group,
     moon,
-    /** lapse: 0 = 静止的夜；1 = “不属于时间的时间”飞速流过 */
+    /**
+     * 设置星空旋转和云层移动的时间加速系数。
+     * @param {number} v 0 为平时的夜空，1 为剧情时间加速的最大速度。
+     */
     setLapse(v) {
       state.lapse = v;
     },
+    /**
+     * 跟随相机位置更新天空，并推进星空旋转和云层移动。
+     * @param {number} dt 距上一帧的秒数。
+     * @param {THREE.Camera} camera 当前相机。
+     * @param {number} pixelRatio 渲染器采用的设备像素比。
+     */
     update(dt, camera, pixelRatio) {
       group.position.copy(camera.position);
       moon.position.copy(MOON_DIR).multiplyScalar(SKY_R * 0.9);
-      moon.lookAt(camera.position);
-      // 平时星空几乎不动——这里是从时间里脱落的夜
-      state.starAngle += dt * (0.0012 + state.lapse * 0.9);
+      lunar.update(dt, state.lapse);
+      // 平时星点保持固定，仅在剧情的时间加速段旋转星空。
+      state.starAngle += dt * state.lapse * 0.9;
       state.cloudAngle += dt * (0.0006 + state.lapse * 0.35);
       stars.rotation.y = state.starAngle;
       clouds.rotation.y = state.cloudAngle;

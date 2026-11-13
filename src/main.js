@@ -78,7 +78,7 @@ async function boot() {
   renderer.domElement.tabIndex = 0;
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x06132a, 0.0052);
+  scene.fog = new THREE.FogExp2(0x030711, 0.0052);
   const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.08, 4000);
   scene.add(camera);
 
