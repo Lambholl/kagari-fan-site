@@ -596,7 +596,7 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
         if (S.glanceHold > 0) {
           S.glanceHold -= dt;
           kagari.setLook(1, 2.6);
-          kagari.setExpression('smile');
+          kagari.setExpression('stare');
         } else {
           kagari.setLook(0, 2.2);
           if (kagari.state.look < 0.08) kagari.setExpression('neutral');

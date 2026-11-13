@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { COLORS } from './materials.js';
+import { COLORS, characterToon } from './materials.js';
 import { skirtPoint } from './kagari.js';
 import { clamp, lerp, smoothstep, damp } from '../util/noise.js';
 
@@ -101,22 +101,9 @@ export function createRibbons(kagari) {
   group.name = 'ribbons';
   kagari.group.add(group);
 
-  const purpleMat = new THREE.MeshLambertMaterial({
+  const purpleMat = characterToon(0xffffff, 'ribbon', {
     vertexColors: true,
     side: THREE.DoubleSide,
-    emissive: 0x000000,
-  });
-  // 缎带自身带着一点光：在夜里也保持鲜明的紫与洋红
-  purpleMat.onBeforeCompile = (shader) => {
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <emissivemap_fragment>',
-      '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vColor.rgb * 0.5;',
-    );
-  };
-  const blackMat = new THREE.MeshLambertMaterial({
-    color: 0x0c0c16,
-    side: THREE.DoubleSide,
-    emissive: 0x020208,
   });
 
   const WL = kagari.WRIST_REST.L;
@@ -145,6 +132,16 @@ export function createRibbons(kagari) {
     delay: 0.0,
   };
   bridge.calm = sampleCurve(bridgePts, bridge.strip.n);
+  // 曲线插值也要贴着实际裙面，不能只保证控制点在布面上方。
+  const restOnCloth = (points) => {
+    for (let i = 1; i < points.length - 1; i++) {
+      const p = points[i];
+      const y = kagari.clothHeightAt(p.x, p.z);
+      if (y !== null) p.y = Math.max(p.y, y + 0.01);
+    }
+    return points;
+  };
+  restOnCloth(bridge.calm);
   bridge.strip.setColors((s, c) => c.copy(A).lerp(B, 0.5 - 0.5 * Math.cos(s * Math.PI * 2)));
 
   // —— 从蝴蝶结垂下来的几条长尾 ——
@@ -160,23 +157,13 @@ export function createRibbons(kagari) {
     const pts = [w0.clone(), ...d.pts.map(([x, z]) => nearHand(d.side, V(x, d.y, z)))];
     const strip = new Strip(72, purpleMat);
     strip.setColors((s, c) => c.copy(A).lerp(B, smoothstep(0.0, 0.55, s)).lerp(A, smoothstep(0.7, 1.0, s) * 0.6));
-    return { ...d, strip, calm: sampleCurve(pts, strip.n), kind: 'tail', rest: w0 };
+    return { ...d, strip, calm: restOnCloth(sampleCurve(pts, strip.n)), kind: 'tail', rest: w0 };
   });
 
-  // —— 从发饰飘出来的黑色细带 ——
-  const blackDefs = [
-    { side: 'L', len: 0.5, phase: 0.3, out: 0.12 },
-    { side: 'L', len: 0.68, phase: 1.9, out: 0.06 },
-    { side: 'R', len: 0.55, phase: 3.4, out: 0.11 },
-    { side: 'R', len: 0.72, phase: 5.0, out: 0.05 },
-  ];
-  const blacks = blackDefs.map((d) => ({ ...d, strip: new Strip(48, blackMat), kind: 'black' }));
-
-  for (const r of [bridge, ...tails, ...blacks]) group.add(r.strip.mesh);
+  for (const r of [bridge, ...tails]) group.add(r.strip.mesh);
 
   const st = { alert: 0, spike: 0, strike: 0 };
   const wrist = new THREE.Vector3();
-  const anchor = new THREE.Vector3();
   const dirP = new THREE.Vector3();
   const d = new THREE.Vector3();
   const side = new THREE.Vector3();
@@ -262,27 +249,6 @@ export function createRibbons(kagari) {
       );
     }
 
-    // 黑带：总是轻轻飘在身后
-    for (const r of blacks) {
-      const { strip } = r;
-      const sg = r.side === 'L' ? 1 : -1;
-      kagari.clipLocalNow(r.side, anchor);
-      const amp = 1 + st.alert * 1.2;
-      for (let i = 0; i <= strip.n; i++) {
-        const u = i / strip.n;
-        const wave = Math.sin(u * 3.4 - time * 0.55 + r.phase);
-        const wave2 = Math.sin(u * 5.3 - time * 0.4 + r.phase * 2.0);
-        strip.points[i].set(
-          anchor.x + sg * (0.02 * u + r.out * u * u) + 0.03 * wave2 * u * amp,
-          anchor.y - 0.05 * u - 0.36 * u * u * (1 - 0.5 * st.alert) + 0.04 * wave * u * amp,
-          anchor.z - 0.05 * u - r.len * 0.55 * u - 0.02 * wave2 * u,
-        );
-      }
-      strip.rebuild(
-        (u) => 0.0135 * (1 - 0.35 * u),
-        (u) => u * 2.2 + 0.6 * Math.sin(time * 0.45 + u * 4 + r.phase),
-      );
-    }
   }
 
   return { group, update, state: st };
