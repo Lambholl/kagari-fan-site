@@ -105,7 +105,7 @@ async function boot() {
 
   // ———————————————————— 世界 ————————————————————
   const terrain = createTerrain();
-  const sky = createSky();
+  const sky = await createSky();
   const paper = createPaper();
   const daisies = createDaisies();
   scene.add(terrain.group, sky.group, paper.group, daisies.group);
