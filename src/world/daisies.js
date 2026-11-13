@@ -4,6 +4,7 @@ import { heightAt } from './terrain.js';
 import { isOnPaper } from './paper.js';
 
 const STEM_H = 2.3;
+const PAPER_CLEARANCE = 0.25;
 
 /** 一朵雏菊：茎 + 一圈花瓣 + 花心。花盘半径 1 个单位，茎高 STEM_H 个单位。 */
 function makeDaisyGeometry(petalColor, centerColor, stemColor) {
@@ -111,7 +112,8 @@ export function createDaisies() {
     const ang = rand() * Math.PI * 2;
     const x = Math.cos(ang) * r;
     const z = Math.sin(ang) * r;
-    if (isOnPaper(x, z, -0.12)) continue;
+    // 给花瓣、茎的倾斜和摇摆留出空隙，避免纸边的花伸进纸面。
+    if (isOnPaper(x, z, PAPER_CLEARANCE)) continue;
     const patch = fbm(nPatch, x * 0.11, z * 0.11, 3);
     // 主角上山的南坡开得最盛
     const south = 0.55 + 0.45 * smoothstep(-0.4, 0.5, z / (r + 1e-3));
