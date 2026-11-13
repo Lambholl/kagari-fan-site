@@ -160,7 +160,12 @@ async function boot() {
   ui.el.start.addEventListener('click', () => story.begin(false));
   ui.el.free.addEventListener('click', () => story.begin(true));
   ui.el.pause.addEventListener('click', () => player.requestLock());
-  ui.el.sound.addEventListener('click', () => ui.setSound(audio.toggle()));
+  function toggleSound() {
+    const on = audio.toggle();
+    if (on) audio.resume();
+    ui.setSound(on);
+  }
+  ui.el.sound.addEventListener('click', toggleSound);
   ui.el.act.addEventListener('click', () => {
     if (!ui.triggerPrompt()) ui.advance();
   });
@@ -170,7 +175,7 @@ async function boot() {
   ui.el.sub.style.pointerEvents = 'auto';
   ui.el.sub.addEventListener('click', () => ui.advance());
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyM') ui.setSound(audio.toggle());
+    if (e.code === 'KeyM') toggleSound();
   });
   window.addEventListener('touchstart', () => ui.setTouchMode(), { passive: true, once: true });
 

@@ -318,7 +318,8 @@ kbd {
 #pause {
   position: fixed;
   inset: 0;
-  z-index: 15;
+  /* 遮住场景，保留上层 HUD 的声音和帮助按钮可点击。 */
+  z-index: 9;
   display: grid;
   place-content: center;
   background: rgba(3, 6, 18, 0.35);

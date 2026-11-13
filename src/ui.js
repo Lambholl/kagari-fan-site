@@ -210,6 +210,9 @@ export function createUI(timeline) {
     },
     setSound(on) {
       el.sound.classList.toggle('off', !on);
+      el.sound.setAttribute('aria-pressed', String(on));
+      el.sound.title = on ? '关闭声音' : '开启声音';
+      el.sound.setAttribute('aria-label', el.sound.title);
     },
     setTouchMode,
     get isTouch() {
