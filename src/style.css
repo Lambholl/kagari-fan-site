@@ -175,6 +175,7 @@ kbd {
 }
 #top-buttons {
   position: absolute;
+  z-index: 2;
   top: max(12px, env(safe-area-inset-top));
   right: 14px;
   display: flex;
@@ -203,6 +204,8 @@ kbd {
 }
 #help {
   position: absolute;
+  z-index: 2;
+  pointer-events: auto;
   top: 58px;
   right: 14px;
   padding: 12px 16px;
@@ -318,7 +321,8 @@ kbd {
 #pause {
   position: fixed;
   inset: 0;
-  z-index: 15;
+  z-index: 1;
+  pointer-events: auto;
   display: grid;
   place-content: center;
   background: rgba(3, 6, 18, 0.35);
