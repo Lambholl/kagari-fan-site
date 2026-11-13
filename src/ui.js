@@ -23,6 +23,9 @@ export function createUI(timeline) {
     cardP: $('card').querySelector('p'),
     pause: $('pause'),
     sound: $('btn-sound'),
+    volume: $('volume'),
+    volumeControl: $('volume-control'),
+    volumeValue: $('volume-value'),
     help: $('btn-help'),
     helpBox: $('help'),
     joystick: $('joystick'),
@@ -205,11 +208,31 @@ export function createUI(timeline) {
       el.free.disabled = false;
       el.start.textContent = '走上山丘';
     },
-    setPaused(v) {
-      el.pause.hidden = !v;
+    /**
+     * 显示或收起暂停界面，暂停时展开音量滑条。
+     * @param {boolean} isPaused - 是否暂停。
+     * @returns {void}
+     */
+    setPaused(isPaused) {
+      el.pause.hidden = !isPaused;
+      el.volumeControl.hidden = !isPaused;
     },
-    setSound(on) {
-      el.sound.classList.toggle('off', !on);
+    setSound(isOn) {
+      el.sound.classList.toggle('off', !isOn);
+      el.sound.setAttribute('aria-pressed', String(isOn));
+      el.sound.setAttribute('aria-label', isOn ? '关闭声音' : '开启声音');
+      el.sound.title = isOn ? '关闭声音' : '开启声音';
+    },
+    /**
+     * 显示音量滑条和百分比。
+     * @param {number} value - 音量，取 0 至 1。
+     * @returns {void}
+     */
+    setVolume(value) {
+      const percentage = Math.round(value * 100);
+      el.volume.value = String(percentage);
+      el.volume.setAttribute('aria-valuetext', `${percentage}%`);
+      el.volumeValue.textContent = `${percentage}%`;
     },
     setTouchMode,
     get isTouch() {

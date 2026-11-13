@@ -202,6 +202,57 @@ kbd {
   color: rgba(191, 230, 255, 0.35);
   text-decoration: line-through;
 }
+#sound-control {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  border: 1px solid rgba(191, 230, 255, 0.3);
+  border-radius: 18px;
+  background: rgba(6, 14, 38, 0.5);
+  backdrop-filter: blur(6px);
+  transition: border-color 0.2s;
+}
+#sound-control:focus-within,
+#sound-control:hover {
+  border-color: rgba(191, 230, 255, 0.7);
+}
+#sound-control #btn-sound {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+#sound-control #btn-sound:hover {
+  background: rgba(30, 60, 130, 0.6);
+}
+#volume-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  padding: 0 10px 0 0;
+  color: var(--moon);
+  font: 12px/1 var(--sans);
+}
+#volume {
+  width: 96px;
+  height: 24px;
+  margin: 0;
+  accent-color: #bfe6ff;
+  cursor: pointer;
+}
+#volume:focus-visible {
+  outline: 2px solid var(--moon);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+#volume-value {
+  min-width: 4ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 #help {
   position: absolute;
   z-index: 2;
@@ -530,6 +581,16 @@ kbd {
 }
 
 @media (max-width: 640px) {
+  #volume-control {
+    gap: 6px;
+    padding: 0 8px;
+  }
+  #volume-control .volume-label {
+    display: none;
+  }
+  #volume {
+    width: 76px;
+  }
   #title {
     align-items: end;
     background: linear-gradient(180deg, rgba(3, 7, 22, 0.2), rgba(3, 7, 22, 0.75) 45%, rgba(3, 7, 22, 0.94));

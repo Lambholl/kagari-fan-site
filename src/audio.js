@@ -1,32 +1,119 @@
-// 全部用 WebAudio 现场合成：一层缓慢起伏的和声垫底，偶尔落下几粒八音盒般的音。
-// 不含任何录音或原作乐曲。
+const BGM_URL = `${import.meta.env.BASE_URL}audio/bgm.m4a`;
+const BGM_SAMPLE_RATE = 48000;
+const BGM_LOOP_START_SECONDS = 1631598 / BGM_SAMPLE_RATE;
+const BGM_LOOP_END_SECONDS = 7679898 / BGM_SAMPLE_RATE;
+const BGM_FADE_START_SECONDS = 0;
+const BGM_FADE_IN_SECONDS = 1.5;
+const MASTER_MAX_GAIN = 0.9;
+const SOUND_FADE_IN_SECONDS = 0.9;
+const SOUND_FADE_OUT_SECONDS = 0.6;
+const VOLUME_RAMP_SECONDS = 0.12;
 
-const PENTA = [587.33, 698.46, 783.99, 880.0, 1046.5, 1174.66, 1396.91]; // D 小调五声
-const PAD = [146.83, 220.0, 293.66, 329.63, 440.0];
+/**
+ * 场景音乐与互动音效的控制接口。
+ * @typedef {object} SceneAudio
+ * @property {boolean} enabled
+ * @property {number} volume - 音量，取 0 至 1。
+ * @property {() => void} init
+ * @property {() => void} resume
+ * @property {() => boolean} toggle
+ * @property {(value: number) => number} setVolume
+ * @property {(v: number) => void} setTension
+ * @property {(isOnPaper: boolean, isRunning: boolean) => void} step
+ * @property {() => void} ribbonRise
+ * @property {() => void} bristle
+ * @property {() => void} slash
+ * @property {() => void} flick
+ * @property {() => void} glyph
+ * @property {() => void} pour
+ * @property {() => void} chime
+ * @property {() => void} open
+ */
 
+/**
+ * 创建背景音乐和场景音效控制器，并读取已保存的声音开关与音量，默认音量为 50%。
+ *
+ * @returns {SceneAudio} 通过 init 创建音频资源，音乐与音效共用声音开关。
+ */
 export function createAudio() {
   let ctx = null;
   let master = null;
   let wet = null;
-  let padGain = null;
   let tension = null;
+  let bgmSource = null;
+  let bgmLoading = null;
   let enabled = true;
-  let nextBell = 0;
+  let volume = 0.5;
   let noiseBuf = null;
   try {
     enabled = localStorage.getItem('kagari.sound') !== 'off';
+    const storedVolume = localStorage.getItem('kagari.volume');
+    if (storedVolume !== null) {
+      const parsedVolume = Number(storedVolume);
+      if (Number.isFinite(parsedVolume) && parsedVolume >= 0 && parsedVolume <= 1) volume = parsedVolume;
+    }
   } catch {
     /* 隐私模式下可能读不到，默认开 */
   }
 
+  function rampVolume(seconds) {
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    if (typeof master.gain.cancelAndHoldAtTime === 'function') {
+      master.gain.cancelAndHoldAtTime(now);
+    } else {
+      const currentGain = master.gain.value;
+      master.gain.cancelScheduledValues(now);
+      master.gain.setValueAtTime(currentGain, now);
+    }
+    master.gain.linearRampToValueAtTime(enabled ? volume * MASTER_MAX_GAIN : 0, now + seconds);
+  }
+
+  async function startBgm() {
+    if (bgmSource || bgmLoading) return;
+    bgmLoading = (async () => {
+      const response = await fetch(BGM_URL);
+      if (!response.ok) throw new Error(`背景音乐请求失败：HTTP ${response.status}`);
+      const buffer = await ctx.decodeAudioData(await response.arrayBuffer());
+      if (buffer.duration <= BGM_LOOP_END_SECONDS) throw new Error('背景音乐长度不足以覆盖循环终点');
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      source.loopStart = BGM_LOOP_START_SECONDS;
+      source.loopEnd = BGM_LOOP_END_SECONDS;
+      const gain = ctx.createGain();
+      const startTime = ctx.currentTime;
+      const fadeStartTime = startTime + BGM_FADE_START_SECONDS;
+      gain.gain.value = 0;
+      gain.gain.setValueAtTime(0, fadeStartTime);
+      gain.gain.linearRampToValueAtTime(0.8, fadeStartTime + BGM_FADE_IN_SECONDS);
+      // 成品已经包含混响，直接接入 master 可保留混音时的空间感。
+      source.connect(gain).connect(master);
+      source.start(startTime);
+      bgmSource = source;
+    })();
+    try {
+      await bgmLoading;
+    } catch (error) {
+      console.error('背景音乐加载失败，将在下次恢复声音时重试。', error);
+    } finally {
+      bgmLoading = null;
+    }
+  }
+
+  /**
+   * 创建音乐和音效资源；重复调用复用已创建的资源。
+   * @returns {void}
+   */
   function init() {
     if (ctx) return;
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     ctx = new AC();
     master = ctx.createGain();
-    master.gain.value = enabled ? 0.9 : 0;
+    master.gain.value = enabled ? volume * MASTER_MAX_GAIN : 0;
     master.connect(ctx.destination);
+    void startBgm();
 
     // 简易混响：两条互相反馈的延迟线
     wet = ctx.createGain();
@@ -48,36 +135,6 @@ export function createAudio() {
     d2.connect(fb2).connect(lp).connect(d1);
     d1.connect(master);
     d2.connect(master);
-
-    // 和声垫
-    padGain = ctx.createGain();
-    padGain.gain.value = 0;
-    const padLp = ctx.createBiquadFilter();
-    padLp.type = 'lowpass';
-    padLp.frequency.value = 780;
-    padGain.connect(padLp).connect(master);
-    padLp.connect(wet);
-    PAD.forEach((f, i) => {
-      for (const det of [-4, 5]) {
-        const o = ctx.createOscillator();
-        o.type = i < 2 ? 'sine' : 'triangle';
-        o.frequency.value = f;
-        o.detune.value = det + i;
-        const g = ctx.createGain();
-        g.gain.value = 0.0;
-        // 每个声部各自缓慢呼吸
-        const lfo = ctx.createOscillator();
-        lfo.frequency.value = 0.04 + i * 0.013 + (det > 0 ? 0.007 : 0);
-        const lg = ctx.createGain();
-        lg.gain.value = 0.018;
-        lfo.connect(lg).connect(g.gain);
-        g.gain.setValueAtTime(0.022, ctx.currentTime);
-        o.connect(g).connect(padGain);
-        o.start();
-        lfo.start();
-      }
-    });
-    padGain.gain.linearRampToValueAtTime(0.9, ctx.currentTime + 6);
 
     // 紧张时浮上来的低频
     tension = ctx.createGain();
@@ -101,7 +158,6 @@ export function createAudio() {
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     const data = noiseBuf.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-    nextBell = ctx.currentTime + 3;
   }
 
   function bell(freq, when, gain = 0.07, dur = 3.2) {
@@ -154,64 +210,119 @@ export function createAudio() {
     src.stop(t + dur + 0.05);
   }
 
+  /**
+   * 恢复浏览器暂停的音频，并重试尚未加载成功的音乐。
+   * @returns {void}
+   */
+  function resume() {
+    if (!ctx) return;
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch((error) => console.error('恢复场景声音失败。', error));
+    }
+    void startBgm();
+  }
+
   return {
     init,
+    resume,
+    /**
+     * 返回音乐和音效的开关状态。
+     * @returns {boolean}
+     */
     get enabled() {
       return enabled;
     },
+    /**
+     * 返回当前音量。
+     * @returns {number} 音量，取 0 至 1。
+     */
+    get volume() {
+      return volume;
+    },
+    /**
+     * 平滑调整音乐和音效的音量，并保存设置。
+     * @param {number} value - 音量，超出 0 至 1 的值取最近的边界。
+     * @returns {number} 调整后的音量；静音时保留该音量供恢复声音时使用。
+     * @throws {TypeError} value 不是有限数值时抛出。
+     */
+    setVolume(value) {
+      if (!Number.isFinite(value)) throw new TypeError('音量必须是有限数值');
+      volume = Math.max(0, Math.min(1, value));
+      try {
+        localStorage.setItem('kagari.volume', String(volume));
+      } catch {
+        /* 存储受限时仍保留本次访问的音量。 */
+      }
+      rampVolume(VOLUME_RAMP_SECONDS);
+      return volume;
+    },
+    /**
+     * 淡入或淡出音乐和音效，并保存开关状态。
+     * @returns {boolean} 切换后的状态。
+     */
     toggle() {
       enabled = !enabled;
       try {
         localStorage.setItem('kagari.sound', enabled ? 'on' : 'off');
       } catch {
-        /* ignore */
+        /* 存储受限时仍保留本次访问的开关状态。 */
       }
-      if (ctx) master.gain.linearRampToValueAtTime(enabled ? 0.9 : 0, ctx.currentTime + 0.3);
+      rampVolume(enabled ? SOUND_FADE_IN_SECONDS : SOUND_FADE_OUT_SECONDS);
+      if (enabled) resume();
       return enabled;
     },
-    resume() {
-      if (ctx && ctx.state === 'suspended') ctx.resume();
-    },
-    update() {
-      if (!ctx) return;
-      const now = ctx.currentTime;
-      if (now >= nextBell) {
-        // 零星落下的音
-        const n = 1 + (Math.random() < 0.35 ? 1 : 0) + (Math.random() < 0.12 ? 1 : 0);
-        let t = now + 0.05;
-        let idx = (Math.random() * PENTA.length) | 0;
-        for (let i = 0; i < n; i++) {
-          bell(PENTA[idx] * (Math.random() < 0.3 ? 0.5 : 1), t, 0.05 + Math.random() * 0.03);
-          idx = Math.max(0, Math.min(PENTA.length - 1, idx + ((Math.random() * 5) | 0) - 2));
-          t += 0.28 + Math.random() * 0.4;
-        }
-        nextBell = now + 2.6 + Math.random() * 4.5;
-      }
-    },
+    /**
+     * 调整紧张音效的强度。
+     * @param {number} v - 强度，取 0 至 1。
+     * @returns {void}
+     */
     setTension(v) {
       if (!ctx) return;
       tension.gain.setTargetAtTime(v * 0.12, ctx.currentTime, 0.6);
     },
-    step(onPaper, running) {
-      if (onPaper) noise({ dur: 0.09, type: 'highpass', f0: 2600, f1: 1800, gain: 0.035, q: 0.7 });
-      else noise({ dur: 0.13, type: 'lowpass', f0: running ? 900 : 620, f1: 240, gain: 0.05, q: 0.5 });
+    /**
+     * 播放脚步音效。
+     * @param {boolean} isOnPaper - 是否踩在纸上。
+     * @param {boolean} isRunning - 是否正在奔跑。
+     * @returns {void}
+     */
+    step(isOnPaper, isRunning) {
+      if (isOnPaper) noise({ dur: 0.09, type: 'highpass', f0: 2600, f1: 1800, gain: 0.035, q: 0.7 });
+      else noise({ dur: 0.13, type: 'lowpass', f0: isRunning ? 900 : 620, f1: 240, gain: 0.05, q: 0.5 });
     },
-    /** 缎带无风自起 */
+    /**
+     * 播放缎带扬起时的渐强音效。
+     * @returns {void}
+     */
     ribbonRise() {
       noise({ dur: 1.6, type: 'bandpass', f0: 500, f1: 2400, q: 2.5, gain: 0.07, attack: 0.5 });
     },
+    /**
+     * 播放缎带绷紧时的短促音效。
+     * @returns {void}
+     */
     bristle() {
       noise({ dur: 0.35, type: 'highpass', f0: 3200, f1: 5200, q: 1, gain: 0.08, attack: 0.02 });
     },
+    /**
+     * 播放缎带挥斩和撞击的音效。
+     * @returns {void}
+     */
     slash() {
       noise({ dur: 0.28, type: 'highpass', f0: 1500, f1: 7000, q: 0.8, gain: 0.4, attack: 0.004 });
       noise({ when: 0.06, dur: 0.6, type: 'lowpass', f0: 420, f1: 60, q: 1, gain: 0.5, attack: 0.01 });
     },
-    /** 被缎带“啪”地弹开 */
+    /**
+     * 播放被缎带弹开时的音效。
+     * @returns {void}
+     */
     flick() {
       noise({ dur: 0.07, type: 'bandpass', f0: 2200, f1: 900, q: 1.5, gain: 0.35, attack: 0.002 });
     },
-    /** “有力量的语言”：被压缩的信息，听起来只是一块噪声 */
+    /**
+     * 播放少女语言的噪声与振荡音效。
+     * @returns {void}
+     */
     glyph() {
       if (!ctx) return;
       const t = ctx.currentTime;
@@ -237,16 +348,26 @@ export function createAudio() {
       ring.stop(t + 0.55);
       noise({ dur: 0.5, type: 'bandpass', f0: 4000, f1: 300, q: 4, gain: 0.12 });
     },
+    /**
+     * 播放倒水音效。
+     * @returns {void}
+     */
     pour() {
       noise({ dur: 1.1, type: 'bandpass', f0: 900, f1: 1900, q: 6, gain: 0.07, attack: 0.15 });
     },
-    /** 她笑了 */
+    /**
+     * 播放逐渐升高的铃声音效。
+     * @returns {void}
+     */
     chime() {
       if (!ctx) return;
       const t = ctx.currentTime + 0.05;
       [587.33, 880.0, 1174.66, 1479.98, 1760.0].forEach((f, i) => bell(f, t + i * 0.16, 0.07, 4.5));
     },
-    /** 被请进纸上的那一刻 */
+    /**
+     * 播放踏入纸面时的和弦与渐强音效。
+     * @returns {void}
+     */
     open() {
       if (!ctx) return;
       const t = ctx.currentTime + 0.02;

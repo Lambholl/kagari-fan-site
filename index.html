@@ -19,7 +19,13 @@
       <div id="chapter-tag"></div>
       <div id="converge" hidden></div>
       <div id="top-buttons">
-        <button id="btn-sound" type="button" title="声音开关" aria-label="声音开关">♪</button>
+        <div id="sound-control" role="group" aria-label="声音">
+          <button id="btn-sound" type="button" title="声音开关" aria-label="声音开关">♪</button>
+          <label id="volume-control" for="volume" hidden>
+            <input id="volume" type="range" min="0" max="100" step="1" value="50" aria-label="音量" aria-valuetext="50%" />
+            <output id="volume-value" for="volume">50%</output>
+          </label>
+        </div>
         <button id="btn-help" type="button" title="操作说明" aria-label="操作说明">?</button>
       </div>
       <div id="help" hidden>
@@ -68,6 +74,9 @@
           人物底模改编自
           <a href="https://sketchfab.com/3d-models/clannad-furukawa-nagisa-428437e8f1c74fb994269729ec1a1bc6" target="_blank" rel="noopener">Furukawa Nagisa</a>
           （<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>）<br />
+          BGM 转载来源：<a href="https://www.youtube.com/watch?v=0RwhROC7yfU" target="_blank" rel="noopener noreferrer">YouTube</a><br />
+          钢琴采样：<a href="https://freepats.zenvoid.org/Piano/acoustic-grand-piano.html" target="_blank" rel="noopener noreferrer">Salamander Grand Piano · Alexander Holm</a>
+          （<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener noreferrer">CC BY 3.0</a>）<br />
           《Rewrite》及其角色的著作权归 ©VISUAL ARTS/Key 所有。
         </p>
       </div>
