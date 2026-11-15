@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { clamp, damp } from './util/noise.js';
-import { heightAt } from './world/terrain.js';
+import { heightAt, canWalkTo } from './world/terrain.js';
+import { SCENE_LAYOUT } from './world/scene-layout.js';
 
 // 主角（瑚太朗）的第一人称控制：WASD / 方向键行走，鼠标环视；触屏有虚拟摇杆。
 
@@ -8,14 +9,14 @@ const EYE_STAND = 1.66;
 const EYE_SIT = 0.98;
 const WALK = 2.5;
 const RUN = 5.0;
-const WORLD_R = 72;
+const WORLD_R = 170;
 // 不能走进她和铺开的裙摆里（圆心略偏向她身后）
 const BLOCK = { x: 0.25, z: -0.14, r: 1.08 };
 
 export function createPlayer({ camera, dom, hooks = {} }) {
   const st = {
-    x: 0,
-    z: 36,
+    x: SCENE_LAYOUT.spawn.x,
+    z: SCENE_LAYOUT.spawn.z,
     yaw: 0,
     pitch: 0.12,
     roll: 0,
@@ -210,6 +211,12 @@ export function createPlayer({ camera, dom, hooks = {} }) {
       nx *= WORLD_R / r;
       nz *= WORLD_R / r;
       hooks.onBoundary?.();
+    }
+    // 新场景有陡崖，不能再只靠圆形边界限制行走。
+    if (!canWalkTo(nx, nz, st.x, st.z)) {
+      if (canWalkTo(nx, st.z, st.x, st.z)) nz = st.z;
+      else if (canWalkTo(st.x, nz, st.x, st.z)) nx = st.x;
+      else { nx = st.x; nz = st.z; }
     }
     const moved = Math.hypot(nx - st.x, nz - st.z);
     st.x = nx;

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { isOnPaper, distanceToPaper } from './world/paper.js';
 import { clamp, lerp } from './util/noise.js';
+import { SCENE_LAYOUT } from './world/scene-layout.js';
 
 // 剧情：Moon 线开头到「三杯咖啡」的一段，改写成可以亲自走一遍的小小流程。
 //
@@ -9,9 +10,9 @@ import { clamp, lerp } from './util/noise.js';
 // stage 2-4 第一、二、三杯咖啡
 // stage 5  被请进纸上；此后自由活动
 
-const SPAWN = { x: 2.5, z: 39, yaw: 0.06, pitch: 0.16 };
-const RESPAWN = { x: -2.2, z: 19, yaw: -0.1, pitch: 0.12 };
-const FREE_SPAWN = { x: -1.2, z: 8.5, yaw: -0.12, pitch: 0.0 };
+const SPAWN = SCENE_LAYOUT.spawn;
+const RESPAWN = SCENE_LAYOUT.respawn;
+const FREE_SPAWN = SCENE_LAYOUT.freeSpawn;
 const linear = (k) => k;
 
 export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items, audio, post, camera }) {

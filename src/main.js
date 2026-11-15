@@ -4,11 +4,13 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 
-import { createTerrain, HILL_TOP } from './world/terrain.js';
+import { createTerrain, HILL_TOP, heightAt } from './world/terrain.js';
 import { createSky, MOON_DIR } from './world/sky.js';
 import { createPaper, isOnPaper } from './world/paper.js';
 import { createDaisies } from './world/daisies.js';
+import { createPresentation, scenePixelRatio } from './world/presentation.js';
 import { createKagari } from './kagari/kagari.js';
 import { createRibbons } from './kagari/ribbons.js';
 import { createPlayer } from './player.js';
@@ -62,30 +64,57 @@ const FinalShader = {
   `,
 };
 
+/** 泛光前清掉 NaN/Inf：单个坏像素经模糊会扩散成大片黑块。 */
+const SanitizeShader = {
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      bool bad = any(isnan(c)) || any(isinf(c));
+      gl_FragColor = bad ? vec4(0.0, 0.0, 0.0, 1.0) : min(c, vec4(1000.0));
+    }
+  `,
+};
+
 async function boot() {
   const app = document.getElementById('app');
   const params = new URLSearchParams(location.search);
 
   // ———————————————————— 渲染器 ————————————————————
+  // Windows 上避免浏览器直接合成实时 WebGL 图层；原路径保留给开发排查。
+  const directWebGL = import.meta.env.DEV && params.get('present') === 'webgl';
+  const compat = !directWebGL && navigator.platform.startsWith('Win');
   const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
-  const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.75);
+  let pixelRatio = scenePixelRatio(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1, compat);
   renderer.setPixelRatio(pixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.12;
   renderer.shadowMap.enabled = true;
-  app.appendChild(renderer.domElement);
-  renderer.domElement.tabIndex = 0;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  const presentation = createPresentation(renderer.domElement, compat);
+  const display = presentation.canvas;
+  app.appendChild(display);
+  display.tabIndex = 0;
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x030711, 0.0052);
+  scene.fog = new THREE.FogExp2(0x0b213b, 0.004);
   const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.08, 4000);
   scene.add(camera);
 
   // ———————————————————— 光 ————————————————————
-  const hemi = new THREE.HemisphereLight(0x7c9be6, 0x0b1830, 1.15);
+  const hemi = new THREE.HemisphereLight(0x9db9ed, 0x243b4c, 1.65);
   scene.add(hemi);
-  const moonLight = new THREE.DirectionalLight(0xbfd8ff, 2.3);
+  const moonLight = new THREE.DirectionalLight(0xbfd8ff, 3.0);
   moonLight.castShadow = true;
   moonLight.shadow.mapSize.set(2048, 2048);
   moonLight.shadow.camera.left = -14;
@@ -96,6 +125,10 @@ async function boot() {
   moonLight.shadow.camera.far = 200;
   moonLight.shadow.bias = -0.0006;
   scene.add(moonLight, moonLight.target);
+  const treeFill = new THREE.DirectionalLight(0x7a9ac9, 0.85);
+  treeFill.position.set(-10, HILL_TOP + 12, 18);
+  treeFill.target.position.set(-5, HILL_TOP + 9, -5);
+  scene.add(treeFill, treeFill.target);
   // 纸面自己发出的光：一盏贴着她手边，一盏照亮整片纸周围
   const handLight = new THREE.PointLight(0x58b8ff, 0.6, 6, 1.2);
   handLight.position.set(-0.58, HILL_TOP + 0.16, 0.69);
@@ -104,8 +137,12 @@ async function boot() {
   scene.add(handLight, paperLight);
 
   // ———————————————————— 世界 ————————————————————
-  const terrain = createTerrain();
-  const sky = createSky();
+  const mobile = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 768;
+  const [terrain, panorama] = await Promise.all([
+    createTerrain({ mobile }),
+    new THREE.TextureLoader().loadAsync(`${import.meta.env.BASE_URL}scene-assets/sky-no-aurora-${mobile ? 'mobile' : 'desktop'}.jpg`),
+  ]);
+  const sky = createSky(panorama);
   const paper = createPaper();
   const daisies = createDaisies();
   scene.add(terrain.group, sky.group, paper.group, daisies.group);
@@ -117,15 +154,18 @@ async function boot() {
   const ribbons = createRibbons(kagari);
 
   // ———————————————————— 后期 ————————————————————
-  const size = renderer.getDrawingBufferSize(new THREE.Vector2());
-  const target = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
-  const composer = new EffectComposer(renderer, target);
+  // 避免在半浮点色彩缓冲上做多重采样解析，改在输出阶段平滑边缘。
+  const composer = new EffectComposer(renderer);
+  const size = new THREE.Vector2();
   composer.addPass(new RenderPass(scene, camera));
+  composer.addPass(new ShaderPass(SanitizeShader));
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.5, 0.75, 0.86);
   composer.addPass(bloom);
   const finalPass = new ShaderPass(FinalShader);
   composer.addPass(finalPass);
   composer.addPass(new OutputPass());
+  const antialias = new ShaderPass(FXAAShader);
+  composer.addPass(antialias);
   const post = { warp: 0, desat: 0, aberr: 0 };
 
   // ———————————————————— 玩法 ————————————————————
@@ -138,7 +178,7 @@ async function boot() {
   let hadLock = false;
   const player = createPlayer({
     camera,
-    dom: renderer.domElement,
+    dom: display,
     hooks: {
       onAction: () => {
         if (!ui.triggerPrompt()) ui.advance();
@@ -182,9 +222,18 @@ async function boot() {
     // 竖屏时把视野放宽一些
     camera.fov = w < h ? 76 : 62;
     camera.updateProjectionMatrix();
+    const nextRatio = scenePixelRatio(w, h, window.devicePixelRatio || 1, compat);
+    if (nextRatio !== pixelRatio) {
+      pixelRatio = nextRatio;
+      renderer.setPixelRatio(pixelRatio);
+      composer.setPixelRatio(pixelRatio);
+    }
     renderer.setSize(w, h);
     composer.setSize(w, h);
-    paper.setProjection((h * pixelRatio) / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)));
+    presentation.resize();
+    renderer.getDrawingBufferSize(size);
+    antialias.uniforms.resolution.value.set(1 / size.x, 1 / size.y);
+    paper.setProjection(size.y / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)));
   }
   window.addEventListener('resize', resize);
   resize();
@@ -204,14 +253,13 @@ async function boot() {
     tl.update(dt);
 
     if (story.state.mode === 'title') {
-      // 标题画面：镜头在她斜前方缓缓漂移，月轮悬在身后
-      // 相机在“月亮—她”这条线的延长线上：月轮正好悬在她身后
+      // 从南侧看向台顶，让花坡、主树与月轮保留参考图中的前后关系。
       const a = time * 0.06;
       const top = HILL_TOP;
       const wide = camera.aspect > 1.25;
-      camera.position.set(-1.0 + Math.sin(a) * 0.25, top + 0.52 + Math.sin(a * 1.7) * 0.04, 3.3 + Math.cos(a * 0.8) * 0.2);
+      camera.position.set((wide ? -18 : -6) + Math.sin(a) * 0.25, top + 6 + Math.sin(a * 1.7) * 0.04, (wide ? 54 : 36) + Math.cos(a * 0.8) * 0.2);
       // 宽屏时把她和月亮让到画面右侧，给标题留出左半边
-      titleLook.set(wide ? -1.55 : -0.85, top + (wide ? 1.2 : 1.5), 0);
+      titleLook.set(wide ? -13 : -3, top + (wide ? 14 : 13), -7);
       camera.lookAt(titleLook);
     } else {
       player.update(dt);
@@ -235,7 +283,7 @@ async function boot() {
     // 月光的阴影范围跟着主角走
     const px = story.state.mode === 'title' ? 0 : player.state.x;
     const pz = story.state.mode === 'title' ? 0 : player.state.z;
-    moonLight.target.position.set(px, HILL_TOP * 0.5, pz);
+    moonLight.target.position.set(px, heightAt(px, pz), pz);
     moonLight.position.copy(moonLight.target.position).addScaledVector(MOON_DIR, 90);
 
     post.aberr = damp(post.aberr, 0, 1.6, dt);
@@ -244,6 +292,8 @@ async function boot() {
     finalPass.uniforms.uDesat.value = post.desat;
     finalPass.uniforms.uAberr.value = post.aberr;
     composer.render(dt);
+    presentation.present();
+    if (import.meta.env.DEV) debug.afterFrame?.();
   }
 
   // 首帧渲染完再揭开黑幕
@@ -259,8 +309,17 @@ async function boot() {
   });
 
   // 调试入口（控制台用）
-  window.__kagari = { THREE, scene, camera, renderer, player, story, kagari, ribbons, paper, sky, items, post, ui, debug, bloom, tl, lights: { hemi, moonLight, handLight, paperLight } };
+  window.__kagari = { THREE, scene, camera, renderer, display, terrain, daisies, player, story, kagari, ribbons, paper, sky, items, post, ui, debug, bloom, tl, lights: { hemi, moonLight, handLight, paperLight } };
+  if (import.meta.env.DEV && params.has('inspect')) {
+    const { inspectScene } = await import('../tests/browser-scene.js');
+    inspectScene(window.__kagari, params.get('view'));
+  }
 }
 
 // 让“正在铺开夜色…”先画出来，再开始生成场景
-requestAnimationFrame(() => setTimeout(boot, 30));
+requestAnimationFrame(() => setTimeout(() => boot().catch((error) => {
+  console.error('场景加载失败', error);
+  document.getElementById('btn-start').textContent = '场景加载失败';
+  document.querySelector('#title .desc').textContent = '请检查本地场景素材是否齐全，重启开发服务器后刷新页面。';
+  document.getElementById('fade').style.opacity = '0';
+}), 30));

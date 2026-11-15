@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { makeNoise2D, fbm, mulberry32, smoothstep } from '../util/noise.js';
-import { heightAt } from './terrain.js';
+import { flowerSurfaceAt } from './terrain.js';
 import { isOnPaper } from './paper.js';
 
 const STEM_H = 2.3;
@@ -105,7 +105,7 @@ export function createDaisies() {
   let nb = 0;
   let guard = 0;
   const TOTAL = 46000;
-  const RMAX = 60;
+  const RMAX = 110;
   while (nw + nb < TOTAL && guard++ < 900000) {
     // 越靠近丘顶越密
     const r = Math.pow(rand(), 0.66) * RMAX;
@@ -114,6 +114,8 @@ export function createDaisies() {
     const z = Math.sin(ang) * r;
     // 给花瓣、茎的倾斜和摇摆留出空隙，避免纸边的花伸进纸面。
     if (isOnPaper(x, z, PAPER_CLEARANCE)) continue;
+    const surface = flowerSurfaceAt(x, z);
+    if (!surface) continue;
     const patch = fbm(nPatch, x * 0.11, z * 0.11, 3);
     // 主角上山的南坡开得最盛
     const south = 0.55 + 0.45 * smoothstep(-0.4, 0.5, z / (r + 1e-3));
@@ -123,7 +125,7 @@ export function createDaisies() {
     const kind = fbm(nKind, x * 0.07 + 40, z * 0.07 - 13, 3) + (rand() - 0.5) * 0.22;
     const isBlack = kind > 0.54;
     const size = 0.04 + rand() * 0.03;
-    p.set(x, heightAt(x, z) - 0.01, z);
+    p.set(x, surface.height + 0.005, z);
     e.set((rand() - 0.5) * 0.6, rand() * Math.PI * 2, (rand() - 0.5) * 0.6);
     q.setFromEuler(e);
     s.set(size, size * (0.75 + rand() * 0.6), size);

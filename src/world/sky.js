@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { makeNoise2D, fbm, mulberry32, smoothstep } from '../util/noise.js';
 import { createMoon } from './moon.js';
+import { createSkyDome } from './sky-dome.js';
 
 /**
  * 月轮的单位方向，世界坐标以 +y 为天顶、-z 为月面真北。
@@ -51,52 +52,11 @@ function makeCloudTexture(seed) {
  * 创建夜空、星点、月轮和地平线云，返回场景节点与更新方法。
  * @returns {object} group 为天空节点，moon 为月轮节点。
  */
-export function createSky() {
+export function createSky(panorama) {
   const group = new THREE.Group();
   group.name = 'sky';
 
-  // —— 天穹 ——
-  const domeMat = new THREE.ShaderMaterial({
-    side: THREE.BackSide,
-    depthWrite: false,
-    fog: false,
-    uniforms: {
-      uMoonDir: { value: MOON_DIR.clone() },
-      uMoonRadius: { value: MOON_ANGULAR_RADIUS },
-    },
-    vertexShader: /* glsl */ `
-      varying vec3 vDir;
-      void main() {
-        vDir = normalize(position);
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: /* glsl */ `
-      uniform vec3 uMoonDir;
-      uniform float uMoonRadius;
-      varying vec3 vDir;
-      void main() {
-        vec3 d = normalize(vDir);
-        float h = max(d.y, 0.0);
-        vec3 zen = vec3(0.0001, 0.00025, 0.0006);
-        vec3 mid = vec3(0.0004, 0.0010, 0.0026);
-        vec3 hor = vec3(0.0012, 0.0028, 0.0060);
-        vec3 col = mix(hor, mid, smoothstep(0.0, 0.28, h));
-        col = mix(col, zen, smoothstep(0.2, 0.95, h));
-        float md = clamp(dot(d, uMoonDir), -1.0, 1.0);
-        // 从月轮边缘向外连续衰减，避免外壳形成一圈硬边。
-        float outside = max(acos(md) - uMoonRadius, 0.0);
-        col += vec3(0.045, 0.085, 0.12) * exp(-outside / 0.009);
-        col += vec3(0.001, 0.002, 0.004) * exp(-outside / 0.045);
-        // 地平线以下沉入黑暗
-        col = mix(col, vec3(0.0005, 0.0010, 0.0020), 1.0 - smoothstep(-0.12, 0.0, d.y));
-        gl_FragColor = vec4(col, 1.0);
-      }
-    `,
-  });
-  const dome = new THREE.Mesh(new THREE.SphereGeometry(SKY_R, 48, 24), domeMat);
-  dome.renderOrder = -20;
-  dome.frustumCulled = false;
+  const dome = createSkyDome(panorama, SKY_R, MOON_DIR, MOON_ANGULAR_RADIUS);
   group.add(dome);
 
   // —— 星 ——
@@ -243,6 +203,7 @@ export function createSky() {
       moon.position.copy(MOON_DIR).multiplyScalar(SKY_R * 0.9);
       lunar.update(dt, state.lapse);
       // 平时星点保持固定，仅在剧情的时间加速段旋转星空。
+      dome.material.uniforms.uAuroraTime.value += dt * (1 + state.lapse * 5);
       state.starAngle += dt * state.lapse * 0.9;
       state.cloudAngle += dt * (0.0006 + state.lapse * 0.35);
       stars.rotation.y = state.starAngle;

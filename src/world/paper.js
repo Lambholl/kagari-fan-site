@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mulberry32 } from '../util/noise.js';
-import { HILL_TOP } from './terrain.js';
+import { HILL_TOP, heightAt } from './terrain.js';
 import { MOON_DIR } from './sky.js';
 
 /**
@@ -417,7 +417,11 @@ export function createPaper() {
       const ci = (ux > 0 ? 1 : 0) + (uz > 0 ? 2 : 0);
       const k = Math.pow(Math.abs(ux * uz), 6);
       const wav = 0.005 * Math.sin(ux * 4.0 + 1.3) * Math.sin(uz * 3.0 + 0.4);
-      pos.setY(j, k * curl[ci] + wav + 0.008);
+      const x = pos.getX(j);
+      const z = pos.getZ(j);
+      const worldX = sh.cx + x * Math.cos(sh.rot) + z * Math.sin(sh.rot);
+      const worldZ = sh.cz - x * Math.sin(sh.rot) + z * Math.cos(sh.rot);
+      pos.setY(j, heightAt(worldX, worldZ) - HILL_TOP + k * curl[ci] + wav + 0.008);
     }
     geo.computeVertexNormals();
   }
@@ -458,7 +462,7 @@ export function createPaper() {
       const x = (rand() - 0.5) * 8;
       const z = (rand() - 0.5) * 8 - 0.8;
       if (!isOnPaper(x, z)) continue;
-      moteBase.set([x, HILL_TOP, z], n * 3);
+      moteBase.set([x, heightAt(x, z), z], n * 3);
       moteMisc.set([rand(), 0.02 + rand() * 0.04, 0.015 + rand() * 0.035], n * 3); // 相位、速度、大小
       n++;
     }
