@@ -492,7 +492,11 @@ export function createPaper() {
           vAlpha = sin(t * 3.14159) * (1.0 - t * 0.5);
           vec4 mv = modelViewMatrix * vec4(p, 1.0);
           gl_Position = projectionMatrix * mv;
-          gl_PointSize = max(1.0, aMisc.z * uProj / -mv.z);
+          // 小光点按覆盖面积减淡，避免只落在一个随帧变化的采样点上。
+          float diameter = aMisc.z * uProj / max(-mv.z, 0.05);
+          gl_PointSize = max(2.8, diameter);
+          float coverage = diameter / gl_PointSize;
+          vAlpha *= coverage * coverage;
         }
       `,
       fragmentShader: /* glsl */ `

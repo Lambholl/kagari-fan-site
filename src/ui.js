@@ -23,6 +23,9 @@ export function createUI(timeline) {
     cardP: $('card').querySelector('p'),
     pause: $('pause'),
     sound: $('btn-sound'),
+    settings: $('btn-settings'),
+    settingsBox: $('settings'),
+    antialias: $('antialias'),
     help: $('btn-help'),
     helpBox: $('help'),
     joystick: $('joystick'),
@@ -154,12 +157,34 @@ export function createUI(timeline) {
     el.sit.hidden = false;
   }
 
-  el.help.addEventListener('click', () => {
-    el.helpBox.hidden = !el.helpBox.hidden;
+  // 右上角一次只展开一个面板，避免设置遮住操作说明。
+  function showPanel(panel) {
+    el.settingsBox.hidden = panel !== 'settings';
+    el.helpBox.hidden = panel !== 'help';
+    el.settings.setAttribute('aria-expanded', String(!el.settingsBox.hidden));
+    el.help.setAttribute('aria-expanded', String(!el.helpBox.hidden));
+  }
+  el.help.addEventListener('click', () => showPanel(el.helpBox.hidden ? 'help' : null));
+  el.settings.addEventListener('click', () => {
+    showPanel(el.settingsBox.hidden ? 'settings' : null);
+    if (!el.settingsBox.hidden) el.antialias.focus();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || el.settingsBox.hidden) return;
+    showPanel(null);
+    el.settings.focus();
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (!el.settingsBox.hidden && !el.settingsBox.contains(e.target) && !el.settings.contains(e.target)) {
+      showPanel(null);
+    }
   });
 
   return {
     el,
+    get settingsOpen() {
+      return !el.settingsBox.hidden;
+    },
     say,
     narrate,
     clearNarration,

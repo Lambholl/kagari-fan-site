@@ -10,6 +10,7 @@ import { scenePixelRatio } from '../src/world/presentation.js';
 import { repairTangents } from '../src/world/tangents.js';
 import { SCENE_ASSET_DIR, SOURCE_TREE_DIR, SCENE_FILES, SKY_TEXTURES } from '../scripts/scene-assets.js';
 import { createSkyDome } from '../src/world/sky-dome.js';
+import { TemporalAAPass, TEMPORAL_SAMPLES } from '../src/world/temporal-aa.js';
 import { loadGeometry } from './glb-geometry.js';
 
 test('高度采样包含父节点的旋转、缩放和平移，并排除网格外位置', () => {
@@ -67,6 +68,36 @@ test('大窗口和高分屏使用有限的渲染像素，不改变画面宽高�
   assert.ok(wide < 1);
   assert.ok(Math.floor(3606 * wide) * Math.floor(1868 * wide) <= 1920 * 1080);
   assert.equal(scenePixelRatio(1920, 1080, 2, false), 4 / 3);
+});
+
+test('时序采样不偏离像素中心，且切镜头或改变尺寸会清空历史', () => {
+  const camera = new THREE.PerspectiveCamera(62, 1.5, 0.08, 4000);
+  camera.updateMatrixWorld(true);
+  const pass = new TemporalAAPass(camera);
+  pass.setSize(1280, 720);
+  const initial = camera.projectionMatrix.clone();
+  const offsets = new Set();
+  const mean = new THREE.Vector2();
+  for (const [x, y] of TEMPORAL_SAMPLES) {
+    mean.add(new THREE.Vector2(x, y));
+    assert.ok(Math.abs(x) < 0.5 && Math.abs(y) < 0.5);
+    pass.jitterCamera();
+    offsets.add(camera.projectionMatrix.elements.slice(8, 10).join(','));
+    pass.restoreCamera();
+    assert.ok(camera.projectionMatrix.equals(initial));
+  }
+  assert.equal(offsets.size, 8);
+  assert.equal(mean.lengthSq(), 0);
+  pass.uniforms.uHasHistory.value = true;
+  camera.position.z = 10;
+  camera.updateMatrixWorld(true);
+  pass.jitterCamera();
+  assert.equal(pass.uniforms.uHasHistory.value, false);
+  pass.restoreCamera();
+  pass.uniforms.uHasHistory.value = true;
+  pass.setSize(1000, 600);
+  assert.equal(pass.uniforms.uHasHistory.value, false);
+  pass.dispose();
 });
 
 test('实际场景：纸张完整处于椭圆台顶，出生点和上坡路线连续', { skip: !existsSync(groundPath) }, async () => {

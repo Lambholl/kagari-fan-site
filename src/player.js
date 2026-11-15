@@ -53,7 +53,8 @@ export function createPlayer({ camera, dom, hooks = {} }) {
   const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
 
   function onKeyDown(e) {
-    if (e.repeat) return;
+    // 设置打开时，方向键与确认键留给页面控件。
+    if (e.repeat || hooks.inputBlocked?.(e.target)) return;
     keys.add(e.code);
     if (!st.active) return;
     if (e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') hooks.onAction?.();
@@ -172,7 +173,7 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     // —— 移动 ——
     let mx = 0;
     let mz = 0;
-    if (st.active && !st.moveLocked && !st.sitting) {
+    if (st.active && !st.moveLocked && !st.sitting && !hooks.inputBlocked?.()) {
       if (keys.has('KeyW') || keys.has('ArrowUp')) mz -= 1;
       if (keys.has('KeyS') || keys.has('ArrowDown')) mz += 1;
       if (keys.has('KeyA') || keys.has('ArrowLeft')) mx -= 1;

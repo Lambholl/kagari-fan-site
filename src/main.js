@@ -4,6 +4,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 
 import { createTerrain, HILL_TOP, heightAt } from './world/terrain.js';
@@ -11,11 +12,13 @@ import { createSky, MOON_DIR } from './world/sky.js';
 import { createPaper, isOnPaper } from './world/paper.js';
 import { createDaisies } from './world/daisies.js';
 import { createPresentation, scenePixelRatio } from './world/presentation.js';
+import { TemporalAAPass } from './world/temporal-aa.js';
 import { createKagari } from './kagari/kagari.js';
 import { createRibbons } from './kagari/ribbons.js';
 import { createPlayer } from './player.js';
 import { createItems } from './items.js';
 import { createUI } from './ui.js';
+import { bindSelectSetting } from './settings.js';
 import { createAudio } from './audio.js';
 import { createStory } from './story.js';
 import { createTimeline } from './util/timeline.js';
@@ -156,21 +159,38 @@ async function boot() {
   // ———————————————————— 后期 ————————————————————
   // 避免在半浮点色彩缓冲上做多重采样解析，改在输出阶段平滑边缘。
   const composer = new EffectComposer(renderer);
+  for (const target of [composer.renderTarget1, composer.renderTarget2]) {
+    target.depthTexture = new THREE.DepthTexture(target.width, target.height, THREE.UnsignedIntType);
+  }
   const size = new THREE.Vector2();
   composer.addPass(new RenderPass(scene, camera));
+  // 先合成相邻帧，再做泛光和剧情特效，避免把移动的屏幕效果存入历史。
+  const taa = new TemporalAAPass(camera);
+  composer.addPass(taa);
   composer.addPass(new ShaderPass(SanitizeShader));
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.5, 0.75, 0.86);
   composer.addPass(bloom);
   const finalPass = new ShaderPass(FinalShader);
   composer.addPass(finalPass);
+  // 精细档仍采用单帧边缘检测，给不想用历史帧的玩家保留选择。
+  const smaa = new SMAAPass();
+  smaa._materialEdges.defines.SMAA_THRESHOLD = '0.025';
+  smaa.clear = true;
+  const fxaa = new ShaderPass(FXAAShader);
+  composer.addPass(smaa);
   composer.addPass(new OutputPass());
-  const antialias = new ShaderPass(FXAAShader);
-  composer.addPass(antialias);
+  composer.addPass(fxaa);
   const post = { warp: 0, desat: 0, aberr: 0 };
 
   // ———————————————————— 玩法 ————————————————————
   const tl = createTimeline();
   const ui = createUI(tl);
+  bindSelectSetting(ui.el.antialias, 'kagari.antialias', (mode) => {
+    taa.enabled = mode === 'taa';
+    taa.reset();
+    smaa.enabled = mode === 'smaa';
+    fxaa.enabled = mode === 'fxaa';
+  });
   const audio = createAudio();
   ui.setSound(audio.enabled);
   const items = createItems(camera, scene);
@@ -180,6 +200,7 @@ async function boot() {
     camera,
     dom: display,
     hooks: {
+      inputBlocked: (target) => ui.settingsOpen || target === ui.el.settings,
       onAction: () => {
         if (!ui.triggerPrompt()) ui.advance();
       },
@@ -232,8 +253,10 @@ async function boot() {
     composer.setSize(w, h);
     presentation.resize();
     renderer.getDrawingBufferSize(size);
-    antialias.uniforms.resolution.value.set(1 / size.x, 1 / size.y);
-    paper.setProjection(size.y / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)));
+    fxaa.uniforms.resolution.value.set(1 / size.x, 1 / size.y);
+    const projectionPixels = size.y / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+    paper.setProjection(projectionPixels);
+    daisies.setProjection(projectionPixels);
   }
   window.addEventListener('resize', resize);
   resize();
@@ -291,7 +314,12 @@ async function boot() {
     finalPass.uniforms.uWarp.value = post.warp;
     finalPass.uniforms.uDesat.value = post.desat;
     finalPass.uniforms.uAberr.value = post.aberr;
-    composer.render(dt);
+    if (taa.enabled) taa.jitterCamera();
+    try {
+      composer.render(dt);
+    } finally {
+      if (taa.enabled) taa.restoreCamera();
+    }
     presentation.present();
     if (import.meta.env.DEV) debug.afterFrame?.();
   }

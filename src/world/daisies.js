@@ -28,6 +28,7 @@ function makeDaisyGeometry(petalColor, centerColor, stemColor) {
     const d = push(-dx, H, -dz, stemColor);
     idx.push(a, b, c2, a, c2, d);
   }
+  const stemVertices = pos.length / 3;
   // 花瓣：微微上翘成浅碗，从侧面看也是一朵花
   const N = 8;
   for (let k = 0; k < N; k++) {
@@ -52,6 +53,10 @@ function makeDaisyGeometry(petalColor, centerColor, stemColor) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  // 茎比花盘更早小到不足一个像素，需要单独淡出。
+  const stems = new Float32Array(pos.length / 3);
+  stems.fill(1, 0, stemVertices);
+  geo.setAttribute('aStem', new THREE.BufferAttribute(stems, 1));
   // 法线统一朝上：花瓣柔和地“接住”月光，而不是随朝向忽明忽暗
   const nor = new Float32Array(pos.length);
   for (let i = 0; i < nor.length; i += 3) nor[i + 1] = 1;
@@ -60,38 +65,110 @@ function makeDaisyGeometry(petalColor, centerColor, stemColor) {
   return geo;
 }
 
-function makeMaterial(timeUniform) {
-  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+function makeMaterial(uniforms, distant = false) {
+  const mat = new THREE.MeshLambertMaterial({
+    vertexColors: true, side: THREE.DoubleSide, transparent: true,
+    depthWrite: !distant, forceSinglePass: true,
+  });
+  mat.customProgramCacheKey = () => distant ? 'daisy-soft-coverage' : 'daisy-mesh';
   mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = timeUniform;
+    Object.assign(shader.uniforms, uniforms);
+    const common = /* glsl */ `
+      uniform float uFlowerTime, uFlowerProjection;
+      uniform int uFlowerProfile;
+      varying float vOpacity;
+      varying vec2 vBloom;
+    `;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;')
+      .replace('#include <common>', `#include <common>
+        ${common}
+        ${distant ? '' : 'attribute float aStem;'}
+      `)
       .replace(
         '#include <begin_vertex>',
         /* glsl */ `#include <begin_vertex>
-        #ifdef USE_INSTANCING
-          // 没有风，花却在微微摇晃
+          // 用花盘实际占用的像素决定过渡距离，适用于不同窗口和视野。
+          vec4 center = modelViewMatrix * instanceMatrix * vec4(0.0, ${STEM_H} + 0.12, 0.0, 1.0);
+          float radius = length(instanceMatrix[0].xyz);
+          float px = radius * uFlowerProjection / max(-center.z, 0.05);
+          vec3 up = normalize((modelViewMatrix * vec4(instanceMatrix[1].xyz, 0.0)).xyz);
+          float facing = abs(dot(up, center.xyz / max(length(center.xyz), 0.05)));
+          vec2 projected = px * vec2(1.0, mix(0.12, 1.0, facing));
+          bool refined = uFlowerProfile == 2;
+          // 整朵花看得见时，单片花瓣仍可能不足一像素。斜看花盘时更晚恢复立体花瓣。
+          float readable = min(px, projected.y * 2.7);
+          float detail = refined ? smoothstep(3.0, 9.0, readable)
+            : (uFlowerProfile == 1 ? smoothstep(1.25, 2.85, px) : 1.0);
           float ph = instanceMatrix[3].x * 0.83 + instanceMatrix[3].z * 1.27;
-          float sway = sin(uTime * 0.9 + ph) * 0.06 + sin(uTime * 0.37 + ph * 1.7) * 0.05;
+          float sway = sin(uFlowerTime * 0.9 + ph) * 0.06 + sin(uFlowerTime * 0.37 + ph * 1.7) * 0.05;
+          if (refined) sway *= mix(0.19, 1.0, smoothstep(2.5, 10.5, readable));
+          else if (uFlowerProfile == 1) sway *= mix(0.19, 1.0, smoothstep(1.25, 4.2, px));
+          ${distant ? `
+          vBloom = position.xy;
+          transformed = vec3(0.0, ${STEM_H} + 0.12, 0.0);
+          ` : `
+          // 茎宽只有花盘半径的约 18%，按茎自己的宽度恢复，避免中景出现跳动的细线。
+          float stem = smoothstep(0.75, 1.65, px * 0.18);
+          vOpacity = refined ? mix(detail, stem, aStem) :
+            detail * mix(1.0, uFlowerProfile == 1 ? smoothstep(2.0, 4.8, px) : 1.0, aStem);
+          `}
           float bend = transformed.y * transformed.y * 0.6;
           transformed.x += sway * bend;
           transformed.z += sway * 0.6 * bend;
-        #endif`,
-      );
+        `,
+      )
+      .replace('#include <project_vertex>', /* glsl */ `
+        #include <project_vertex>
+        ${distant ? `
+        // 远花用软边花盘表示。扩大到一个可稳定采样的面积，再按原面积减淡。
+        vec2 support = max(projected, vec2(1.35));
+        mvPosition.xy += vBloom * support * max(-center.z, 0.05) / uFlowerProjection;
+        gl_Position = projectionMatrix * mvPosition;
+        // 花瓣间有空隙，不能把投影椭圆当作实心花瓣。
+        vOpacity = 0.78 * (1.0 - detail) * (projected.x * projected.y) / (support.x * support.y);
+        ` : ''}
+        if (vOpacity < 0.001 || center.z >= 0.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+      `);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\n${common}`)
+      .replace('#include <alphatest_fragment>', /* glsl */ `
+        diffuseColor.a *= vOpacity;
+        ${distant ? 'diffuseColor.a *= 1.0 - smoothstep(0.0, 1.0, dot(vBloom, vBloom));' : ''}
+        if (diffuseColor.a < 0.001) discard;
+        #include <alphatest_fragment>
+      `);
   };
   return mat;
+}
+
+function makeDistantBloom(source, uniforms, color) {
+  const geo = new THREE.PlaneGeometry(2, 2);
+  const normal = geo.getAttribute('normal');
+  for (let i = 0; i < normal.count; i++) normal.setXYZ(i, 0, 1, 0);
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(Array.from({ length: normal.count }, () => color).flat(), 3));
+  const bloom = new THREE.InstancedMesh(geo, makeMaterial(uniforms, true), 0);
+  bloom.instanceMatrix = source.instanceMatrix;
+  bloom.count = source.count;
+  bloom.frustumCulled = false;
+  // 先画软边，再叠立体花瓣，以免过渡时软边被前一遍的深度截断。
+  bloom.renderOrder = -1;
+  return bloom;
 }
 
 export function createDaisies() {
   const group = new THREE.Group();
   group.name = 'daisies';
-  const time = { value: 0 };
+  const uniforms = {
+    uFlowerTime: { value: 0 },
+    uFlowerProjection: { value: 900 },
+    uFlowerProfile: { value: 2 },
+  };
 
   const white = makeDaisyGeometry([1.2, 1.22, 1.3], [1.15, 0.86, 0.22], [0.16, 0.32, 0.16]);
   const black = makeDaisyGeometry([0.035, 0.03, 0.06], [0.62, 0.55, 0.78], [0.1, 0.2, 0.12]);
   const MAX = 30000;
-  const meshW = new THREE.InstancedMesh(white, makeMaterial(time), MAX);
-  const meshB = new THREE.InstancedMesh(black, makeMaterial(time), MAX);
+  const meshW = new THREE.InstancedMesh(white, makeMaterial(uniforms), MAX);
+  const meshB = new THREE.InstancedMesh(black, makeMaterial(uniforms), MAX);
 
   const rand = mulberry32(8128);
   const nPatch = makeNoise2D(61);
@@ -141,13 +218,27 @@ export function createDaisies() {
   // 实例遍布整座山，包围球按原点几何算会被误剔除
   meshW.frustumCulled = false;
   meshB.frustumCulled = false;
-  group.add(meshW, meshB);
+  const blooms = [
+    makeDistantBloom(meshW, uniforms, [1.08, 1.1, 1.19]),
+    makeDistantBloom(meshB, uniforms, [0.11, 0.10, 0.16]),
+  ];
+  group.add(meshW, meshB, ...blooms);
 
   return {
     group,
+    plants: [meshW, meshB],
+    blooms,
     count: nw + nb,
     update(t) {
-      time.value = t;
+      uniforms.uFlowerTime.value = t;
+    },
+    setProjection(pixels) {
+      uniforms.uFlowerProjection.value = pixels;
+    },
+    /** 开发对照：0 为原网格，1 为旧远景过滤，2 为当前分级过滤。 */
+    setCoverageProfile(profile) {
+      uniforms.uFlowerProfile.value = profile;
+      for (const bloom of blooms) bloom.renderOrder = profile === 2 ? -1 : 1;
     },
   };
 }

@@ -194,7 +194,8 @@ kbd {
   cursor: pointer;
   transition: background 0.2s, border-color 0.2s;
 }
-#top-buttons button:hover {
+#top-buttons button:hover,
+#top-buttons button[aria-expanded="true"] {
   background: rgba(30, 60, 130, 0.6);
   border-color: rgba(191, 230, 255, 0.7);
 }
@@ -202,11 +203,12 @@ kbd {
   color: rgba(191, 230, 255, 0.35);
   text-decoration: line-through;
 }
-#help {
+#help,
+#settings {
   position: absolute;
   z-index: 2;
   pointer-events: auto;
-  top: 58px;
+  top: calc(max(12px, env(safe-area-inset-top)) + 46px);
   right: 14px;
   padding: 12px 16px;
   border: 1px solid rgba(191, 230, 255, 0.2);
@@ -218,6 +220,33 @@ kbd {
 }
 #help p {
   margin: 0;
+}
+#settings {
+  width: min(280px, calc(100vw - 28px));
+}
+#settings h2 {
+  margin: 0 0 6px;
+  color: var(--moon);
+  font-size: 15px;
+  font-weight: 600;
+}
+#settings label {
+  display: block;
+}
+#settings select {
+  width: 100%;
+  min-height: 36px;
+  padding: 4px 8px;
+  border: 1px solid rgba(191, 230, 255, 0.35);
+  border-radius: 5px;
+  background: #0a1835;
+  color: var(--moon);
+  color-scheme: dark;
+  font: inherit;
+}
+#settings p {
+  margin: 6px 0 0;
+  line-height: 1.45;
 }
 
 #prompt {
