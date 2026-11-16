@@ -193,6 +193,7 @@ async function boot() {
   });
   const audio = createAudio();
   ui.setSound(audio.enabled);
+  ui.setVolume(audio.volume);
   const items = createItems(camera, scene);
   let story = null;
   let hadLock = false;
@@ -220,8 +221,12 @@ async function boot() {
 
   ui.el.start.addEventListener('click', () => story.begin(false));
   ui.el.free.addEventListener('click', () => story.begin(true));
-  ui.el.pause.addEventListener('click', () => player.requestLock());
+  ui.el.pause.addEventListener('click', () => {
+    ui.setPaused(false);
+    player.requestLock();
+  });
   ui.el.sound.addEventListener('click', () => ui.setSound(audio.toggle()));
+  ui.el.volume.addEventListener('input', () => ui.setVolume(audio.setVolume(ui.el.volume.valueAsNumber / 100)));
   ui.el.act.addEventListener('click', () => {
     if (!ui.triggerPrompt()) ui.advance();
   });
@@ -232,6 +237,7 @@ async function boot() {
   ui.el.sub.addEventListener('click', () => ui.advance());
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyM') ui.setSound(audio.toggle());
+    if (e.code === 'Escape' && story.state.mode === 'play') ui.setPaused(true);
   });
   window.addEventListener('touchstart', () => ui.setTouchMode(), { passive: true, once: true });
 
@@ -301,7 +307,6 @@ async function boot() {
     daisies.update(time);
     sky.update(dt, camera, pixelRatio);
     items.update(dt, time);
-    audio.update();
 
     // 月光的阴影范围跟着主角走
     const px = story.state.mode === 'title' ? 0 : player.state.x;

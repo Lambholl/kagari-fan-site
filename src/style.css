@@ -248,6 +248,32 @@ kbd {
   margin: 6px 0 0;
   line-height: 1.45;
 }
+#volume-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  margin-bottom: 4px;
+}
+#volume {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  margin: 0;
+  accent-color: #bfe6ff;
+  cursor: pointer;
+}
+#volume:focus-visible {
+  outline: 2px solid var(--moon);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+#volume-value {
+  min-width: 4ch;
+  color: var(--moon);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 
 #prompt {
   position: absolute;

@@ -64,7 +64,7 @@ export function createSkyDome(panorama, radius, moonDir, moonRadius) {
         col += curtain(d, vec2(-0.34, -0.9404), 0.8);
         col += curtain(d, vec2(0.57, -0.8216), 2.6) * 0.54;
 
-        // 月晕和星点分开绘制，月晕从月轮边缘开始向外衰减。
+        // 月晕从月轮边缘开始向外衰减：内圈较亮且收得快，外圈较暗且铺得更开。
         float outside = max(acos(clamp(dot(d, uMoonDir), -1.0, 1.0)) - uMoonRadius, 0.0);
         col += vec3(0.045, 0.085, 0.12) * exp(-outside / 0.009);
         col += vec3(0.001, 0.002, 0.004) * exp(-outside / 0.045);

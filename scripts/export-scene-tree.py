@@ -15,7 +15,6 @@ from mathutils import Matrix, Vector
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / '.materials/moonlit-scene/blender/current/地形_月夜花海_缓坡版.blend'
 OUTPUT = ROOT / '.materials/moonlit-scene/integration/source-tree'
-OUTPUT.mkdir(parents=True, exist_ok=True)
 SCENE_SCALE = 6  # 与 scene-layout.js 中的场景比例一致。
 
 
@@ -170,63 +169,70 @@ def apply_bark_patch(face, uv, origin, axis=None):
             loop[uv].uv = (0.34 + delta.dot(across) * 0.65, 0.58 + delta.dot(up) * 0.65)
 
 
-stats = {}
-for quality, texture_size, keep_leaves, dissolve_degrees in [
-    ('mobile', 512, 0.48, 8),
-    ('desktop', 1024, 0.68, 5),
-]:
-    bpy.ops.wm.open_mainfile(filepath=str(SOURCE))
-    tree = bpy.data.objects['Oak Leaf_Leaf _02_0']
-    # 主树主体网格同时包含树皮和叶片材质，这里仅导出该物体及其祖先变换链。
-    ancestors = [tree]
-    while ancestors[-1].parent:
-        ancestors.append(ancestors[-1].parent)
+def export_trees():
+    """导出电脑和手机两档主树中间模型，并写出各材质的三角面统计。"""
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+    stats = {}
+    for quality, texture_size, keep_leaves, dissolve_degrees in [
+        ('mobile', 512, 0.48, 8),
+        ('desktop', 1024, 0.68, 5),
+    ]:
+        bpy.ops.wm.open_mainfile(filepath=str(SOURCE))
+        tree = bpy.data.objects['Oak Leaf_Leaf _02_0']
+        # 主树主体网格同时包含树皮和叶片材质，这里仅导出该物体及其祖先变换链。
+        ancestors = [tree]
+        while ancestors[-1].parent:
+            ancestors.append(ancestors[-1].parent)
 
-    # 保留原父子变换层级，避免将非均匀缩放与旋转合并后改变树冠轮廓。
-    anchor = Matrix.Translation(Vector((0, 0, -88.24276733398438)))
-    root = ancestors[-1]
-    root.matrix_world = Matrix.Scale(0.2 * SCENE_SCALE, 4) @ anchor @ root.matrix_world
-    bpy.context.view_layer.update()
-    bpy.ops.object.select_all(action='DESELECT')
-    tree.hide_set(False)
-    repair = prepare_tree(tree, keep_leaves, dissolve_degrees)
-    tree.name = 'Game_Hero_Source'
-    tree.data.calc_loop_triangles()
-    stats[quality] = {
-        material.name: sum(triangle.material_index == slot for triangle in tree.data.loop_triangles)
-        for slot, material in enumerate(tree.data.materials)
-    }
-    stats[quality]['repair'] = repair
+        # 保留原父子变换层级，避免将非均匀缩放与旋转合并后改变树冠轮廓。
+        anchor = Matrix.Translation(Vector((0, 0, -88.24276733398438)))
+        root = ancestors[-1]
+        root.matrix_world = Matrix.Scale(0.2 * SCENE_SCALE, 4) @ anchor @ root.matrix_world
+        bpy.context.view_layer.update()
+        bpy.ops.object.select_all(action='DESELECT')
+        tree.hide_set(False)
+        repair = prepare_tree(tree, keep_leaves, dissolve_degrees)
+        tree.name = 'Game_Hero_Source'
+        tree.data.calc_loop_triangles()
+        stats[quality] = {
+            material.name: sum(triangle.material_index == slot for triangle in tree.data.loop_triangles)
+            for slot, material in enumerate(tree.data.materials)
+        }
+        stats[quality]['repair'] = repair
 
-    for material in tree.data.materials:
-        nodes = material.node_tree.nodes
-        shader = next(node for node in nodes if node.type == 'BSDF_PRINCIPLED')
-        if material.name == 'Moon_Hero_Leaf__02':
-            # 将叶片混合模式设为 GREATER_THAN 透明裁切并保留原阈值，使 glTF 导出为 MASK 模式而非半透明排序。
-            links = material.node_tree.links
-            cutoff_node = shader.inputs['Alpha'].links[0].from_node
-            alpha_source = cutoff_node.inputs[0].links[0].from_socket
-            cutoff_node.operation = 'GREATER_THAN'
-            links.new(alpha_source, cutoff_node.inputs[0])
-        for node in nodes:
-            if node.type != 'TEX_IMAGE' or not node.image:
-                continue
-            image = node.image.copy()
-            image.scale(texture_size, texture_size)
-            image.pack()
-            node.image = image
+        for material in tree.data.materials:
+            nodes = material.node_tree.nodes
+            shader = next(node for node in nodes if node.type == 'BSDF_PRINCIPLED')
+            if material.name == 'Moon_Hero_Leaf__02':
+                # 将叶片混合模式设为 GREATER_THAN 透明裁切并保留原阈值，使 glTF 导出为 MASK 模式而非半透明排序。
+                links = material.node_tree.links
+                cutoff_node = shader.inputs['Alpha'].links[0].from_node
+                alpha_source = cutoff_node.inputs[0].links[0].from_socket
+                cutoff_node.operation = 'GREATER_THAN'
+                links.new(alpha_source, cutoff_node.inputs[0])
+            for node in nodes:
+                if node.type != 'TEX_IMAGE' or not node.image:
+                    continue
+                image = node.image.copy()
+                image.scale(texture_size, texture_size)
+                image.pack()
+                node.image = image
 
-    bpy.ops.object.select_all(action='DESELECT')
-    for obj in ancestors:
-        obj.hide_set(False)
-        obj.select_set(True)
-    bpy.context.view_layer.objects.active = tree
-    bpy.ops.export_scene.gltf(
-        filepath=str(OUTPUT / f'tree-game-{quality}.glb'),
-        export_format='GLB', use_selection=True, use_active_scene=True,
-        export_yup=True, export_apply=False, export_tangents=True,
-        export_cameras=False, export_lights=False, export_animations=False,
-    )
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in ancestors:
+            obj.hide_set(False)
+            obj.select_set(True)
+        bpy.context.view_layer.objects.active = tree
+        bpy.ops.export_scene.gltf(
+            filepath=str(OUTPUT / f'tree-game-{quality}.glb'),
+            export_format='GLB', use_selection=True, use_active_scene=True,
+            export_yup=True, export_apply=False, export_tangents=True,
+            export_cameras=False, export_lights=False, export_animations=False,
+        )
 
-(OUTPUT / 'game-triangles.json').write_text(json.dumps(stats, indent=2), encoding='utf-8')
-print('GAME_TREE_TRIANGLES', json.dumps(stats))
+    (OUTPUT / 'game-triangles.json').write_text(json.dumps(stats, indent=2), encoding='utf-8')
+    print('GAME_TREE_TRIANGLES', json.dumps(stats))
+
+
+if __name__ == '__main__':
+    export_trees()

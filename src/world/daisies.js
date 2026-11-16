@@ -75,7 +75,6 @@ function makeMaterial(uniforms, distant = false) {
     Object.assign(shader.uniforms, uniforms);
     const common = /* glsl */ `
       uniform float uFlowerTime, uFlowerProjection;
-      uniform int uFlowerProfile;
       varying float vOpacity;
       varying vec2 vBloom;
     `;
@@ -94,23 +93,19 @@ function makeMaterial(uniforms, distant = false) {
           vec3 up = normalize((modelViewMatrix * vec4(instanceMatrix[1].xyz, 0.0)).xyz);
           float facing = abs(dot(up, center.xyz / max(length(center.xyz), 0.05)));
           vec2 projected = px * vec2(1.0, mix(0.12, 1.0, facing));
-          bool refined = uFlowerProfile == 2;
           // 整朵花看得见时，单片花瓣仍可能不足一像素。斜看花盘时更晚恢复立体花瓣。
           float readable = min(px, projected.y * 2.7);
-          float detail = refined ? smoothstep(3.0, 9.0, readable)
-            : (uFlowerProfile == 1 ? smoothstep(1.25, 2.85, px) : 1.0);
+          float detail = smoothstep(3.0, 9.0, readable);
           float ph = instanceMatrix[3].x * 0.83 + instanceMatrix[3].z * 1.27;
           float sway = sin(uFlowerTime * 0.9 + ph) * 0.06 + sin(uFlowerTime * 0.37 + ph * 1.7) * 0.05;
-          if (refined) sway *= mix(0.19, 1.0, smoothstep(2.5, 10.5, readable));
-          else if (uFlowerProfile == 1) sway *= mix(0.19, 1.0, smoothstep(1.25, 4.2, px));
+          sway *= mix(0.19, 1.0, smoothstep(2.5, 10.5, readable));
           ${distant ? `
           vBloom = position.xy;
           transformed = vec3(0.0, ${STEM_H} + 0.12, 0.0);
           ` : `
           // 茎宽只有花盘半径的约 18%，按茎自己的宽度恢复，避免中景出现跳动的细线。
           float stem = smoothstep(0.75, 1.65, px * 0.18);
-          vOpacity = refined ? mix(detail, stem, aStem) :
-            detail * mix(1.0, uFlowerProfile == 1 ? smoothstep(2.0, 4.8, px) : 1.0, aStem);
+          vOpacity = mix(detail, stem, aStem);
           `}
           float bend = transformed.y * transformed.y * 0.6;
           transformed.x += sway * bend;
@@ -162,7 +157,6 @@ export function createDaisies() {
   const uniforms = {
     uFlowerTime: { value: 0 },
     uFlowerProjection: { value: 900 },
-    uFlowerProfile: { value: 2 },
   };
 
   const white = makeDaisyGeometry([1.2, 1.22, 1.3], [1.15, 0.86, 0.22], [0.16, 0.32, 0.16]);

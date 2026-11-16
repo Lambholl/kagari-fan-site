@@ -123,7 +123,6 @@ function outlineMaterial(thickness, color) {
 export function addOutline(mesh, thickness = 0.0035, color = 0x06071a) {
   const o = new THREE.Mesh(mesh.geometry, outlineMaterial(thickness, color));
   o.name = 'outline';
-  o.userData.outlineSource = mesh.name;
   o.raycast = () => {};
   mesh.add(o);
   return o;
