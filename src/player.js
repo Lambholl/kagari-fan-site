@@ -12,6 +12,13 @@ const RUN = 5.0;
 const WORLD_R = 170;
 // 不能走进她和铺开的裙摆里（圆心略偏向她身后）
 const BLOCK = { x: 0.25, z: -0.14, r: 1.08 };
+// 按住 X 放大的倍率：每次按下从 ZOOM_DEFAULT 开始，滚轮在 ZOOM_MIN 至 ZOOM_MAX 之间调节。
+// 8 倍时默认 62° 视场角收窄到约 8.6°，足够看清山脚平原上的花；再大就像望远镜，画面也只剩少量像素在动。
+const ZOOM_DEFAULT = 3;
+const ZOOM_MIN = 1.25;
+const ZOOM_MAX = 8;
+// 滚轮每格（约 100 像素）倍率变化 2 的 1/4 次方，从 2 倍到 8 倍滚 8 格。
+const ZOOM_WHEEL_PIXELS_PER_OCTAVE = 400;
 
 /** 创建第一人称玩家控制器，同步相机视角和影子替身位置。 */
 export function createPlayer({ camera, dom, hooks = {} }) {
@@ -32,7 +39,9 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     shake: 0,
     pointerLocked: false,
     touch: false,
+    zoom: 1, // 当前放大倍率，平滑趋向 zoomTarget
   };
+  let zoomTarget = 1;
   const keys = new Set();
   const vel = new THREE.Vector2();
   const joy = { id: null, sx: 0, sy: 0, x: 0, y: 0 };
@@ -65,6 +74,7 @@ export function createPlayer({ camera, dom, hooks = {} }) {
       hooks.onAdvance?.();
     }
     if (e.code === 'KeyC' && !st.moveLocked) setSitting(!st.sitting);
+    if (e.code === 'KeyX') zoomTarget = ZOOM_DEFAULT;
     if (MOVE_KEYS.includes(e.code)) {
       if (e.code.startsWith('Arrow')) e.preventDefault();
       if (st.sitting && !st.moveLocked) setSitting(false);
@@ -72,10 +82,20 @@ export function createPlayer({ camera, dom, hooks = {} }) {
   }
   function onKeyUp(e) {
     keys.delete(e.code);
+    if (e.code === 'KeyX') zoomTarget = 1;
+  }
+  function onWheel(e) {
+    if (zoomTarget === 1) return;
+    // 放大时滚轮只调倍率，不让页面滚动。
+    e.preventDefault();
+    const pixels = e.deltaY * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? window.innerHeight : 1);
+    zoomTarget = clamp(zoomTarget * 2 ** (-pixels / ZOOM_WHEEL_PIXELS_PER_OCTAVE), ZOOM_MIN, ZOOM_MAX);
   }
   function rotate(dx, dy, sens) {
-    st.yaw -= dx * sens * lookSensitivity;
-    st.pitch = clamp(st.pitch - dy * sens * lookSensitivity, -1.45, 1.45);
+    // 放大后同样的鼠标位移按倍率缩小转角，准星在画面上移动的速度与不放大时一致。
+    const turn = sens * lookSensitivity / st.zoom;
+    st.yaw -= dx * turn;
+    st.pitch = clamp(st.pitch - dy * turn, -1.45, 1.45);
   }
   function onMouseMove(e) {
     if (!st.active) return;
@@ -156,7 +176,12 @@ export function createPlayer({ camera, dom, hooks = {} }) {
 
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
-  window.addEventListener('blur', () => keys.clear());
+  window.addEventListener('blur', () => {
+    keys.clear();
+    // 切走窗口时收不到 X 的松开事件。
+    zoomTarget = 1;
+  });
+  window.addEventListener('wheel', onWheel, { passive: false });
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup', onMouseUp);
   dom.addEventListener('mousedown', onMouseDown);
@@ -173,6 +198,12 @@ export function createPlayer({ camera, dom, hooks = {} }) {
   }
 
   function update(dt) {
+    // 剧情接管镜头时松开放大。
+    if (!st.active) zoomTarget = 1;
+    // 在对数空间里平滑，放大和缩小的快慢一致。
+    st.zoom = Math.exp(damp(Math.log(st.zoom), Math.log(zoomTarget), 14, dt));
+    if (Math.abs(st.zoom - zoomTarget) < 1e-3) st.zoom = zoomTarget;
+
     // —— 移动 ——
     let mx = 0;
     let mz = 0;

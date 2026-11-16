@@ -252,13 +252,23 @@ async function boot() {
 
   // ———————————————————— 尺寸 ————————————————————
   let landscapeFov = 62;
+  let appliedZoom = 1;
+  // 按设置的视场角和放大倍率更新镜头，并把新的投影换算告诉按屏幕像素淡出细节的雏菊和光点。
+  function applyFov() {
+    // 竖屏画面窄，竖直视场角比设置值多放宽 14°，左右才不至于太窄。
+    const base = window.innerWidth < window.innerHeight ? landscapeFov + 14 : landscapeFov;
+    appliedZoom = player.state.zoom;
+    const halfTan = Math.tan(THREE.MathUtils.degToRad(base) / 2) / appliedZoom;
+    camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(halfTan));
+    camera.updateProjectionMatrix();
+    const projectionPixels = size.y / (2 * halfTan);
+    paper.setProjection(projectionPixels);
+    daisies.setProjection(projectionPixels);
+  }
   function resize() {
     const w = window.innerWidth;
     const h = window.innerHeight;
     camera.aspect = w / h;
-    // 竖屏画面窄，竖直视场角比设置值多放宽 14°，左右才不至于太窄。
-    camera.fov = w < h ? landscapeFov + 14 : landscapeFov;
-    camera.updateProjectionMatrix();
     const nextRatio = scenePixelRatio(w, h, window.devicePixelRatio || 1, compat);
     if (nextRatio !== pixelRatio) {
       pixelRatio = nextRatio;
@@ -270,9 +280,7 @@ async function boot() {
     presentation.resize();
     renderer.getDrawingBufferSize(size);
     fxaa.uniforms.resolution.value.set(1 / size.x, 1 / size.y);
-    const projectionPixels = size.y / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
-    paper.setProjection(projectionPixels);
-    daisies.setProjection(projectionPixels);
+    applyFov();
   }
   window.addEventListener('resize', resize);
   bindRangeSetting(ui.el.fov, 'kagari.fov', (degrees) => {
@@ -317,6 +325,7 @@ async function boot() {
       camera.lookAt(titleLook);
     } else {
       player.update(dt);
+      if (player.state.zoom !== appliedZoom) applyFov();
     }
     if (debug.cam) {
       camera.position.fromArray(debug.cam.pos);
