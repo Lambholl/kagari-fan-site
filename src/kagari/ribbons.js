@@ -245,7 +245,6 @@ export function createRibbons(kagari) {
         (u) => a * (1 - st.strike) * (u * 5.0 + Math.sin(time * 0.8 + u * 3.0 + r.phase)),
       );
     }
-
   }
 
   return { group, update, state: st };

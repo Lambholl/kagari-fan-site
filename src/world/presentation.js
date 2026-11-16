@@ -11,7 +11,7 @@ export function scenePixelRatio(width, height, deviceRatio, compat) {
 export function createPresentation(source, compat) {
   if (!compat) return { canvas: source, resize() {}, present() {} };
   const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
+  const ctx = canvas.getContext('2d', { alpha: false });
   return {
     canvas,
     resize() {

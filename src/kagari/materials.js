@@ -57,7 +57,7 @@ const characterOutput = /* glsl */ `
   float lightWeight = max(characterLightWeight, 0.0001);
   float litAmount = characterLitWeight / lightWeight;
   vec3 palette = mix(uToonShade, uToonLit, litAmount);
-  // 环境色仅按 12% 权重轻微染色，防止蓝色纸面补光覆盖皮肤和眼睛的原本色调。
+  // 设置20%的环境光权重以及 12% 权重轻微染色，防止蓝色纸面补光覆盖皮肤和眼睛的原本色调。
   vec3 illumination = characterLightTint + characterAmbient * 0.2;
   float illuminationLuma = max(dot(illumination, vec3(0.2126, 0.7152, 0.0722)), 0.0001);
   vec3 lightTint = clamp(illumination / illuminationLuma, vec3(0.6), vec3(1.4));
@@ -72,7 +72,6 @@ const characterOutput = /* glsl */ `
 export function characterToon(color, profileName, opts = {}) {
   const profile = CHARACTER_PROFILES[profileName];
   const material = new THREE.MeshToonMaterial({ color, ...opts });
-  material.userData.characterProfile = profileName;
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, {
       uToonShade: { value: new THREE.Color(profile.shade) },
@@ -124,7 +123,6 @@ function outlineMaterial(thickness, color) {
 export function addOutline(mesh, thickness = 0.0035, color = 0x06071a) {
   const o = new THREE.Mesh(mesh.geometry, outlineMaterial(thickness, color));
   o.name = 'outline';
-  o.userData.outlineWidth = thickness;
   o.userData.outlineSource = mesh.name;
   o.raycast = () => {};
   mesh.add(o);
@@ -143,8 +141,6 @@ export function addSkinnedOutline(mesh, thickness = 0.0035, color = 0x06071a) {
   mat.customProgramCacheKey = () => `skinned-outline-${thickness}`;
   const o = new THREE.SkinnedMesh(mesh.geometry, mat);
   o.name = 'outline';
-  o.userData.outlineWidth = thickness;
-  o.userData.outlineSource = mesh.name;
   // 面部描边和原网格共用表情权重，眨眼与口型变化时轮廓一起变形。
   if (mesh.morphTargetInfluences) {
     o.morphTargetInfluences = mesh.morphTargetInfluences;

@@ -141,16 +141,16 @@ async function boot() {
 
   // ———————————————————— 世界 ————————————————————
   const mobile = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 768;
-  const [terrain, panorama] = await Promise.all([
+  const [terrain, panorama, kagari] = await Promise.all([
     createTerrain({ mobile }),
     new THREE.TextureLoader().loadAsync(`${import.meta.env.BASE_URL}textures/sky-no-aurora-${mobile ? 'mobile' : 'desktop'}.webp`),
+    createKagari(),
   ]);
   const sky = createSky(panorama);
   const paper = createPaper();
   const daisies = createDaisies();
   scene.add(terrain.group, sky.group, paper.group, daisies.group);
 
-  const kagari = await createKagari();
   kagari.group.position.set(0, paper.surfaceY, 0);
   kagari.group.rotation.y = KAGARI_YAW;
   scene.add(kagari.group);

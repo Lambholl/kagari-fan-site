@@ -227,19 +227,12 @@ export function createDaisies() {
 
   return {
     group,
-    plants: [meshW, meshB],
-    blooms,
     count: nw + nb,
     update(t) {
       uniforms.uFlowerTime.value = t;
     },
     setProjection(pixels) {
       uniforms.uFlowerProjection.value = pixels;
-    },
-    /** 开发对照模式：0 只画完整网格，1 按像素半径渐隐，2 结合俯仰角平滑过渡。 */
-    setCoverageProfile(profile) {
-      uniforms.uFlowerProfile.value = profile;
-      for (const bloom of blooms) bloom.renderOrder = profile === 2 ? -1 : 1;
     },
   };
 }
