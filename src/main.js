@@ -28,6 +28,18 @@ import { damp } from './util/noise.js';
 /** 篝面朝西南：主角从南面上山时，正好看见她朝向自己左前方的侧脸 */
 const KAGARI_YAW = THREE.MathUtils.degToRad(-40);
 
+// 主界面的固定机位：坐标相对篝脚下的纸面中心（米），fov 为竖直视场角（度），与设置里的视场角无关。
+// 两个机位都在篝的左前方约 2.6 至 3 米、略低于她头顶的位置，看得到低头看纸的脸。
+// 宽屏把她放在画面右半边，左半边留给标题，地球在她右上方；窄屏把她放在画面上半部，下半部留给标题文字。
+const TITLE_SHOTS = {
+  wide: { pos: [-2.51, 0.45, 0.29], look: [-1.59, 0.59, -0.07], fov: 46 },
+  tall: { pos: [-2.84, 0.6, 0.08], look: [-1.87, 0.39, -0.04], fov: 64 },
+};
+// 画面宽高比超过这个值时用宽屏机位。
+const TITLE_WIDE_ASPECT = 1.25;
+// 主界面上篝的朝向：以机位到篝的连线为轴，把平时的朝向左右镜像。她以同样的斜侧角对着镜头，脸朝画面左侧的标题。
+const KAGARI_TITLE_YAW = THREE.MathUtils.degToRad(-120);
+
 const FinalShader = {
   uniforms: {
     tDiffuse: { value: null },
@@ -160,6 +172,18 @@ async function boot() {
   kagari.group.rotation.y = KAGARI_YAW;
   scene.add(kagari.group);
   const ribbons = createRibbons(kagari);
+  // 手边的补光按篝的局部坐标记下，主界面转动篝时跟着转。
+  kagari.group.updateMatrixWorld(true);
+  const handLightLocal = kagari.group.worldToLocal(handLight.position.clone());
+  let isTitleYaw = false;
+  // 主界面与游戏中篝的朝向不同，切换时一并转动手边的补光。
+  function applyKagariYaw(isTitle) {
+    isTitleYaw = isTitle;
+    kagari.group.rotation.y = isTitle ? KAGARI_TITLE_YAW : KAGARI_YAW;
+    kagari.group.updateMatrixWorld(true);
+    handLight.position.copy(handLightLocal);
+    kagari.group.localToWorld(handLight.position);
+  }
 
   // ———————————————————— 后期 ————————————————————
   // 半浮点离屏目标不开启多重采样，改由后处理阶段平滑边缘。
@@ -260,11 +284,15 @@ async function boot() {
   // ———————————————————— 尺寸 ————————————————————
   let landscapeFov = 62;
   let appliedZoom = 1;
-  // 按设置的视场角和放大倍率更新镜头，并把新的投影换算告诉按屏幕像素淡出细节的雏菊和光点。
+  let isTitleFov = true;
+  const titleShot = () => (camera.aspect > TITLE_WIDE_ASPECT ? TITLE_SHOTS.wide : TITLE_SHOTS.tall);
+  // 按当前模式的视场角和放大倍率更新镜头，并把新的投影换算告诉按屏幕像素淡出细节的雏菊和光点。
+  // 主界面用机位自带的视场角；游戏中用设置值，竖屏画面窄，竖直视场角比设置值多放宽 14°，左右才不至于太窄。
   function applyFov() {
-    // 竖屏画面窄，竖直视场角比设置值多放宽 14°，左右才不至于太窄。
-    const base = window.innerWidth < window.innerHeight ? landscapeFov + 14 : landscapeFov;
-    appliedZoom = player.state.zoom;
+    isTitleFov = story.state.mode === 'title';
+    let base = window.innerWidth < window.innerHeight ? landscapeFov + 14 : landscapeFov;
+    if (isTitleFov) base = titleShot().fov;
+    appliedZoom = isTitleFov ? 1 : player.state.zoom;
     const halfTan = Math.tan(THREE.MathUtils.degToRad(base) / 2) / appliedZoom;
     camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(halfTan));
     camera.updateProjectionMatrix();
@@ -321,14 +349,17 @@ async function boot() {
     time += dt;
     tl.update(dt);
 
-    if (story.state.mode === 'title') {
-      // 从南侧看向台顶，让花坡、主树与月轮保留参考图中的前后关系。
-      const a = time * 0.06;
-      const top = HILL_TOP;
-      const wide = camera.aspect > 1.25;
-      camera.position.set((wide ? -18 : -6) + Math.sin(a) * 0.25, top + 6 + Math.sin(a * 1.7) * 0.04, (wide ? 54 : 36) + Math.cos(a * 0.8) * 0.2);
-      // 宽屏时把她和月亮让到画面右侧，给标题留出左半边
-      titleLook.set(wide ? -13 : -3, top + (wide ? 14 : 13), -7);
+    const isTitle = story.state.mode === 'title';
+    if (isTitle !== isTitleYaw) applyKagariYaw(isTitle);
+    if (isTitle !== isTitleFov) {
+      // 进出主界面时视场角跳变，历史帧对不上。
+      applyFov();
+      taa.reset();
+    }
+    if (isTitle) {
+      const shot = titleShot();
+      camera.position.fromArray(shot.pos).add(kagari.group.position);
+      titleLook.fromArray(shot.look).add(kagari.group.position);
       camera.lookAt(titleLook);
     } else {
       player.update(dt);
