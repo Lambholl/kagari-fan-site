@@ -161,7 +161,7 @@ export function createDaisies() {
 
   const white = makeDaisyGeometry([1.2, 1.22, 1.3], [1.15, 0.86, 0.22], [0.16, 0.32, 0.16]);
   const black = makeDaisyGeometry([0.035, 0.03, 0.06], [0.62, 0.55, 0.78], [0.1, 0.2, 0.12]);
-  const MAX = 30000;
+  const MAX = 40000;
   const meshW = new THREE.InstancedMesh(white, makeMaterial(uniforms), MAX);
   const meshB = new THREE.InstancedMesh(black, makeMaterial(uniforms), MAX);
 
@@ -176,7 +176,8 @@ export function createDaisies() {
   let nw = 0;
   let nb = 0;
   let guard = 0;
-  const TOTAL = 46000;
+  // 约四分之一的花落在远处地面上，总数按此放宽，丘顶密度与只种主平台时相近。
+  const TOTAL = 62000;
   const RMAX = 110;
   while (nw + nb < TOTAL && guard++ < 900000) {
     // 越靠近丘顶越密
@@ -191,7 +192,9 @@ export function createDaisies() {
     const patch = fbm(nPatch, x * 0.11, z * 0.11, 3);
     // 主角上山的南坡开得最盛
     const south = 0.55 + 0.45 * smoothstep(-0.4, 0.5, z / (r + 1e-3));
-    const dens = (0.3 + 1.2 * smoothstep(0.34, 0.6, patch)) * (1 - 0.6 * smoothstep(28, RMAX, r)) * south;
+    // 外圈逐渐稀疏到 0，花海按距离淡出，而不是停在主平台模型的边缘或采样半径上。
+    const fade = (1 - 0.6 * smoothstep(28, RMAX, r)) * (1 - smoothstep(RMAX * 0.64, RMAX, r));
+    const dens = (0.3 + 1.2 * smoothstep(0.34, 0.6, patch)) * fade * south;
     if (rand() > dens) continue;
     // 白与黑成片交错
     const kind = fbm(nKind, x * 0.07 + 40, z * 0.07 - 13, 3) + (rand() - 0.5) * 0.22;
