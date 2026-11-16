@@ -5,6 +5,15 @@ import { isOnPaper } from './paper.js';
 
 const STEM_H = 2.3;
 const PAPER_CLEARANCE = 0.25;
+// 花盘半径（米）在 SIZE_MIN 到 SIZE_MIN + SIZE_RANGE 之间随机。
+const SIZE_MIN = 0.04;
+const SIZE_RANGE = 0.03;
+// 花盘半径小于这么多像素时立体花瓣完全透明，与顶点着色器里 detail 的下限一致。
+const MODEL_MIN_PIXELS = 3;
+// 挑选附近花朵用的水平方格边长（米）。
+const CELL = 8;
+// 镜头水平移动超过这个距离（米）才重新挑选。
+const REFRESH_DISTANCE = 2;
 
 /** 一朵雏菊：茎 + 一圈花瓣 + 花心。花盘半径 1 个单位，茎高 STEM_H 个单位。 */
 function makeDaisyGeometry(petalColor, centerColor, stemColor) {
@@ -136,14 +145,14 @@ function makeMaterial(uniforms, distant = false) {
   return mat;
 }
 
-function makeDistantBloom(source, uniforms, color) {
+function makeDistantBloom(matrices, count, uniforms, color) {
   const geo = new THREE.PlaneGeometry(2, 2);
   const normal = geo.getAttribute('normal');
   for (let i = 0; i < normal.count; i++) normal.setXYZ(i, 0, 1, 0);
   geo.setAttribute('color', new THREE.Float32BufferAttribute(Array.from({ length: normal.count }, () => color).flat(), 3));
   const bloom = new THREE.InstancedMesh(geo, makeMaterial(uniforms, true), 0);
-  bloom.instanceMatrix = source.instanceMatrix;
-  bloom.count = source.count;
+  bloom.instanceMatrix = matrices;
+  bloom.count = count;
   bloom.frustumCulled = false;
   // 先画软边，再叠立体花瓣，以免过渡时软边被前一遍的深度截断。
   bloom.renderOrder = -1;
@@ -162,8 +171,14 @@ export function createDaisies() {
   const white = makeDaisyGeometry([1.2, 1.22, 1.3], [1.15, 0.86, 0.22], [0.16, 0.32, 0.16]);
   const black = makeDaisyGeometry([0.035, 0.03, 0.06], [0.62, 0.55, 0.78], [0.1, 0.2, 0.12]);
   const MAX = 40000;
-  const meshW = new THREE.InstancedMesh(white, makeMaterial(uniforms), MAX);
-  const meshB = new THREE.InstancedMesh(black, makeMaterial(uniforms), MAX);
+  const models = {
+    white: new THREE.InstancedMesh(white, makeMaterial(uniforms), MAX),
+    black: new THREE.InstancedMesh(black, makeMaterial(uniforms), MAX),
+  };
+  // 全部花的矩阵只给远景软边圆盘用；立体花朵的 instanceMatrix 每次只装进镜头附近格子里的花。
+  const all = { white: new Float32Array(MAX * 16), black: new Float32Array(MAX * 16) };
+  const counts = { white: 0, black: 0 };
+  const cells = new Map();
 
   const rand = mulberry32(8128);
   const nPatch = makeNoise2D(61);
@@ -173,13 +188,11 @@ export function createDaisies() {
   const e = new THREE.Euler();
   const s = new THREE.Vector3();
   const p = new THREE.Vector3();
-  let nw = 0;
-  let nb = 0;
   let guard = 0;
   // 约四分之一的花落在远处地面上，总数按此放宽，丘顶密度与只种主平台时相近。
   const TOTAL = 62000;
   const RMAX = 110;
-  while (nw + nb < TOTAL && guard++ < 900000) {
+  while (counts.white + counts.black < TOTAL && guard++ < 900000) {
     // 越靠近丘顶越密
     const r = Math.pow(rand(), 0.66) * RMAX;
     const ang = rand() * Math.PI * 2;
@@ -198,35 +211,75 @@ export function createDaisies() {
     if (rand() > dens) continue;
     // 白与黑成片交错
     const kind = fbm(nKind, x * 0.07 + 40, z * 0.07 - 13, 3) + (rand() - 0.5) * 0.22;
-    const isBlack = kind > 0.54;
-    const size = 0.04 + rand() * 0.03;
+    const color = kind > 0.54 ? 'black' : 'white';
+    const size = SIZE_MIN + rand() * SIZE_RANGE;
     p.set(x, surface.height + 0.005, z);
     e.set((rand() - 0.5) * 0.6, rand() * Math.PI * 2, (rand() - 0.5) * 0.6);
     q.setFromEuler(e);
     s.set(size, size * (0.75 + rand() * 0.6), size);
-    m.compose(p, q, s);
-    if (isBlack) {
-      if (nb < MAX) meshB.setMatrixAt(nb++, m);
-    } else if (nw < MAX) meshW.setMatrixAt(nw++, m);
+    const index = counts[color];
+    if (index >= MAX) continue;
+    m.compose(p, q, s).toArray(all[color], index * 16);
+    counts[color]++;
+    const cellX = Math.floor(x / CELL);
+    const cellZ = Math.floor(z / CELL);
+    const key = `${cellX},${cellZ}`;
+    if (!cells.has(key)) cells.set(key, { x: (cellX + 0.5) * CELL, z: (cellZ + 0.5) * CELL, white: [], black: [] });
+    cells.get(key)[color].push(index);
   }
-  meshW.count = nw;
-  meshB.count = nb;
-  meshW.instanceMatrix.needsUpdate = true;
-  meshB.instanceMatrix.needsUpdate = true;
-  // 实例遍布整座山，包围球按原点几何算会被误剔除
-  meshW.frustumCulled = false;
-  meshB.frustumCulled = false;
+  for (const mesh of Object.values(models)) {
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.count = 0;
+    // 实例遍布整座山，包围球按原点几何算会被误剔除
+    mesh.frustumCulled = false;
+  }
   const blooms = [
-    makeDistantBloom(meshW, uniforms, [1.08, 1.1, 1.19]),
-    makeDistantBloom(meshB, uniforms, [0.11, 0.10, 0.16]),
+    makeDistantBloom(new THREE.InstancedBufferAttribute(all.white, 16), counts.white, uniforms, [1.08, 1.1, 1.19]),
+    makeDistantBloom(new THREE.InstancedBufferAttribute(all.black, 16), counts.black, uniforms, [0.11, 0.10, 0.16]),
   ];
-  group.add(meshW, meshB, ...blooms);
+  group.add(models.white, models.black, ...blooms);
+
+  const viewer = new THREE.Vector3();
+  const lastViewer = new THREE.Vector3(Infinity, 0, Infinity);
+  let lastReach = 0;
+  // 立体花朵在花盘半径不到 MODEL_MIN_PIXELS 像素时顶点着色器已把它整个丢弃，但每个顶点仍要算一遍。
+  // 按最大花盘和当前投影算出还可能看得见立体花朵的水平距离，只把这个距离内格子里的花交给立体花朵绘制。
+  function refreshModels(camera) {
+    camera.getWorldPosition(viewer);
+    // 花盘中心比花朵位置高约 0.25 米，摇摆再留一点余量。
+    const depth = (SIZE_MIN + SIZE_RANGE) * uniforms.uFlowerProjection.value / MODEL_MIN_PIXELS + 0.5;
+    // 着色器按视线方向的深度判断，画面角落处深度最小，只有距离的 1 / sqrt(1 + tan²(半视角)·(1 + 宽高比²))。
+    const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+    const reach = depth * Math.sqrt(1 + tanHalf * tanHalf * (1 + camera.aspect * camera.aspect));
+    const moved = Math.hypot(viewer.x - lastViewer.x, viewer.z - lastViewer.z);
+    if (moved < REFRESH_DISTANCE && Math.abs(reach - lastReach) < 0.01) return;
+    lastViewer.copy(viewer);
+    lastReach = reach;
+    // 多留出一段刷新间隔内可能走过的距离。
+    const limit = reach + REFRESH_DISTANCE;
+    for (const color of ['white', 'black']) {
+      const target = models[color].instanceMatrix;
+      let n = 0;
+      for (const cell of cells.values()) {
+        const dx = Math.max(Math.abs(viewer.x - cell.x) - CELL / 2, 0);
+        const dz = Math.max(Math.abs(viewer.z - cell.z) - CELL / 2, 0);
+        if (dx * dx + dz * dz > limit * limit) continue;
+        for (const i of cell[color]) target.array.set(all[color].subarray(i * 16, i * 16 + 16), 16 * n++);
+      }
+      models[color].count = n;
+      target.clearUpdateRanges();
+      target.addUpdateRange(0, n * 16);
+      target.needsUpdate = true;
+    }
+  }
 
   return {
     group,
-    count: nw + nb,
-    update(t) {
+    count: counts.white + counts.black,
+    /** 每帧调用：推进风摆时间，镜头走出一段距离或投影变化后重新挑选需要绘制立体花朵的花。 */
+    update(t, camera) {
       uniforms.uFlowerTime.value = t;
+      refreshModels(camera);
     },
     setProjection(pixels) {
       uniforms.uFlowerProjection.value = pixels;

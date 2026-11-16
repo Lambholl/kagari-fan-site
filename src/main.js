@@ -322,7 +322,7 @@ async function boot() {
     kagari.fingertipWorld(tip);
     paper.setHand(tip.x, tip.z, 0.35 + 0.65 * kagari.state.tracing);
     paper.update(dt, time);
-    daisies.update(time);
+    daisies.update(time, camera);
     sky.update(dt, camera, pixelRatio);
     items.update(dt, time);
 
