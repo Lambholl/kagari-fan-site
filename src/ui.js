@@ -2,6 +2,34 @@
 
 const $ = (id) => document.getElementById(id);
 
+/**
+ * 绑定标题画面的加载进度条。
+ * @returns {{update: (state: import('./loading.js').LoadingState) => void, fail: (message: string) => void}}
+ *   update 刷新进度和阶段说明；fail 把进度条标成失败并显示 message。
+ */
+export function createLoadingView() {
+  const root = $('loading');
+  const bar = root.querySelector('.loading-track i');
+  const label = root.querySelector('.loading-label');
+  const percent = root.querySelector('.loading-percent');
+  return {
+    update({ value, label: text }) {
+      const rounded = Math.floor(value * 100);
+      bar.style.transform = `scaleX(${value})`;
+      label.textContent = text;
+      percent.textContent = `${rounded}%`;
+      root.setAttribute('aria-valuenow', String(rounded));
+      root.setAttribute('aria-valuetext', `${text} ${rounded}%`);
+    },
+    fail(message) {
+      root.classList.add('failed');
+      label.textContent = message;
+      percent.textContent = '';
+      root.setAttribute('aria-valuetext', message);
+    },
+  };
+}
+
 /** 创建负责字幕、提示、章节卡、黑场与设置面板的界面控制器。 */
 export function createUI(timeline) {
   const el = {
@@ -224,10 +252,12 @@ export function createUI(timeline) {
     hideTitle() {
       el.title.classList.add('gone');
     },
+    /** 收起加载进度条，显示并启用两个开始按钮。 */
     setReady() {
+      $('loading').hidden = true;
       el.start.disabled = false;
       el.free.disabled = false;
-      el.start.textContent = '走上山丘';
+      el.start.closest('.actions').hidden = false;
     },
     /**
      * 显示或收起暂停界面。

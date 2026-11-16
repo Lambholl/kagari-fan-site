@@ -449,11 +449,62 @@ kbd {
   letter-spacing: 0.08em;
   color: #c9d6f4;
 }
+#loading {
+  width: min(100%, 360px);
+  margin-top: 34px;
+  /* 与两个按钮的总高度接近，进度条换成按钮时下方内容不跳动 */
+  min-height: 50px;
+}
+.loading-track {
+  position: relative;
+  height: 3px;
+  overflow: hidden;
+  background: rgba(191, 230, 255, 0.16);
+  border-radius: 2px;
+}
+.loading-track i {
+  position: absolute;
+  inset: 0;
+  transform: scaleX(0);
+  transform-origin: left;
+  background: linear-gradient(90deg, var(--paper), var(--moon));
+  box-shadow: 0 0 12px rgba(120, 190, 255, 0.8);
+  transition: transform 0.35s ease-out;
+}
+.loading-text {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 12px 0 0;
+  font: 13px/1.4 var(--serif);
+  letter-spacing: 0.12em;
+  color: var(--ink-dim);
+}
+.loading-percent {
+  font-family: var(--sans);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+  color: var(--moon);
+}
+#loading.failed .loading-track i {
+  background: var(--magenta);
+  box-shadow: none;
+}
+#loading.failed .loading-label {
+  color: var(--magenta);
+}
 .actions {
   display: flex;
   flex-wrap: wrap;
   gap: 14px;
   margin-top: 34px;
+  animation: actions-in 0.8s ease both;
+}
+@keyframes actions-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }
 .actions button {
   position: relative;
@@ -594,7 +645,11 @@ kbd {
 
 @media (prefers-reduced-motion: reduce) {
   #prompt,
-  #subtitle.glyph .text {
+  #subtitle.glyph .text,
+  .actions {
     animation: none;
+  }
+  .loading-track i {
+    transition: none;
   }
 }

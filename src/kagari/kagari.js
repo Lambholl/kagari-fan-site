@@ -4,6 +4,7 @@ import { characterToon, addSkinnedOutline, addOutline } from './materials.js';
 import { smoothstep, lerp, clamp, damp } from '../util/noise.js';
 import { drapeSeatedSkirt } from './skirt.js';
 import { prepareSleeve } from './sleeves.js';
+import { trackLoad } from '../loading.js';
 
 // 篝：模型来自 v9-rigged.blend（来源与许可见 public/models/SOURCES.md），
 // 骨架为 VRM 式 J_Bip_*，表情使用 Fcl_* 形态键，腕上飘带由 ribbons.js 绘制。
@@ -263,7 +264,7 @@ export async function createKagari() {
   const root = new THREE.Group();
   root.name = 'kagari';
 
-  const gltf = await new GLTFLoader().loadAsync(MODEL_URL);
+  const gltf = await trackLoad((onProgress) => new GLTFLoader().loadAsync(MODEL_URL, onProgress));
   const body = gltf.scene;
   root.add(body);
   const { B, bones, meshes } = setupRig(body);

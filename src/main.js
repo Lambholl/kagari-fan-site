@@ -17,9 +17,10 @@ import { createKagari } from './kagari/kagari.js';
 import { createRibbons } from './kagari/ribbons.js';
 import { createPlayer } from './player.js';
 import { createItems } from './items.js';
-import { createUI } from './ui.js';
+import { createUI, createLoadingView } from './ui.js';
 import { bindSelectSetting } from './settings.js';
-import { createAudio } from './audio.js';
+import { createAudio, preloadBgm } from './audio.js';
+import { onLoadingProgress, trackLoad, loadingStep, finishLoading } from './loading.js';
 import { createStory } from './story.js';
 import { createTimeline } from './util/timeline.js';
 import { damp } from './util/noise.js';
@@ -141,11 +142,15 @@ async function boot() {
 
   // ———————————————————— 世界 ————————————————————
   const mobile = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 768;
+  const panoramaUrl = `${import.meta.env.BASE_URL}textures/sky-no-aurora-${mobile ? 'mobile' : 'desktop'}.webp`;
   const [terrain, panorama, kagari] = await Promise.all([
     createTerrain({ mobile }),
-    new THREE.TextureLoader().loadAsync(`${import.meta.env.BASE_URL}textures/sky-no-aurora-${mobile ? 'mobile' : 'desktop'}.webp`),
+    trackLoad((onProgress) => new THREE.TextureLoader().loadAsync(panoramaUrl, onProgress)),
     createKagari(),
+    // 音乐下载失败不影响进入场景，开启声音时 startBgm 会重新下载。
+    preloadBgm().catch((error) => console.warn('背景音乐预加载失败', error)),
   ]);
+  await loadingStep('build');
   const sky = createSky(panorama);
   const paper = createPaper();
   const daisies = createDaisies();
@@ -267,6 +272,15 @@ async function boot() {
   window.addEventListener('resize', resize);
   resize();
 
+  // 提前编译场景材质，避免首帧因同步编译卡住数秒；后期处理的着色器仍在首帧编译。
+  await loadingStep('compile');
+  try {
+    await renderer.compileAsync(scene, camera);
+  } catch (error) {
+    console.warn('着色器预编译失败，改为首帧编译', error);
+  }
+  await loadingStep('frame');
+
   // ———————————————————— 循环 ————————————————————
   const debug = { cam: null };
   const tip = new THREE.Vector3();
@@ -333,6 +347,7 @@ async function boot() {
     last = t;
     frame(t);
     requestAnimationFrame(() => {
+      finishLoading();
       ui.setReady();
       ui.fade(0, 2.2);
       const auto = params.get('autostart');
@@ -344,10 +359,14 @@ async function boot() {
   window.__kagari = { THREE, scene, camera, renderer, display, terrain, daisies, player, story, kagari, ribbons, paper, sky, items, post, ui, debug, bloom, tl, lights: { hemi, moonLight, handLight, paperLight } };
 }
 
-// 让“正在铺开夜色…”先画出来，再开始生成场景
+const loadingView = createLoadingView();
+const stopLoadingView = onLoadingProgress(loadingView.update);
+
+// 让进度条先画出来，再开始生成场景
 requestAnimationFrame(() => setTimeout(() => boot().catch((error) => {
   console.error('场景加载失败', error);
-  document.getElementById('btn-start').textContent = '场景加载失败';
+  stopLoadingView();
+  loadingView.fail('场景加载失败');
   document.querySelector('#title .desc').textContent = '请检查本地场景素材是否齐全，重启开发服务器后刷新页面。';
   document.getElementById('fade').style.opacity = '0';
 }), 30));

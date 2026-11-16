@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createSurfaceSampler } from './surface.js';
 import { SCENE_LAYOUT } from './scene-layout.js';
 import { repairTangents } from './tangents.js';
+import { trackLoad } from '../loading.js';
 
 /** 世界原点处山顶地面的基准高度（米）。 */
 export const HILL_TOP = 14;
@@ -34,7 +35,7 @@ export function canWalkTo(x, z, fromX, fromZ) {
 export async function createTerrain({ mobile = false } = {}) {
   const quality = mobile ? 'mobile' : 'desktop';
   const loader = new GLTFLoader();
-  const load = async (name) => (await loader.loadAsync(`${import.meta.env.BASE_URL}models/${name}.glb`)).scene;
+  const load = async (name) => (await trackLoad((onProgress) => loader.loadAsync(`${import.meta.env.BASE_URL}models/${name}.glb`, onProgress))).scene;
   const [ground, tree, forest] = await Promise.all([
     load('ground-desktop'), load(`tree-game-${quality}`),
     load('forest-desktop'),

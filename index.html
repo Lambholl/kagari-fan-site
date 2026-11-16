@@ -70,8 +70,12 @@
           睡不着的夜晚，开满黑白雏菊的山丘。<br />
           山顶铺着大得难以置信的纸，一位少女伏在上面，演算着什么。
         </p>
-        <div class="actions">
-          <button id="btn-start" type="button" disabled>正在铺开夜色…</button>
+        <div id="loading" role="progressbar" aria-label="场景加载进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="loading-track"><i></i></div>
+          <p class="loading-text"><span class="loading-label">正在铺开夜色…</span><span class="loading-percent">0%</span></p>
+        </div>
+        <div class="actions" hidden>
+          <button id="btn-start" type="button" disabled>走上山丘</button>
           <button id="btn-free" type="button" class="ghost" disabled>自由漫步<small>跳过剧情</small></button>
         </div>
         <ul class="keys">

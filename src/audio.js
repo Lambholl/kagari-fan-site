@@ -1,3 +1,5 @@
+import { fetchWithProgress, trackLoad } from './loading.js';
+
 const BGM_URL = `${import.meta.env.BASE_URL}audio/bgm.m4a`;
 const BGM_SAMPLE_RATE = 48000;
 const BGM_LOOP_START_SECONDS = 1613328 / BGM_SAMPLE_RATE;
@@ -8,6 +10,20 @@ const MASTER_MAX_GAIN = 0.9;
 const SOUND_FADE_IN_SECONDS = 0.9;
 const SOUND_FADE_OUT_SECONDS = 0.6;
 const VOLUME_RAMP_SECONDS = 0.12;
+
+let bgmData = null;
+
+/**
+ * 预先下载背景音乐并计入首屏进度；重复调用复用同一次下载，失败后下次调用会重试。
+ * @returns {Promise<ArrayBuffer>}
+ */
+export function preloadBgm() {
+  bgmData ??= trackLoad((onProgress) => fetchWithProgress(BGM_URL, onProgress)).catch((error) => {
+    bgmData = null;
+    throw error;
+  });
+  return bgmData;
+}
 
 /**
  * 场景音乐与互动音效的控制接口。
@@ -72,9 +88,8 @@ export function createAudio() {
   async function startBgm() {
     if (bgmSource || bgmLoading) return;
     bgmLoading = (async () => {
-      const response = await fetch(BGM_URL);
-      if (!response.ok) throw new Error(`背景音乐请求失败：HTTP ${response.status}`);
-      const buffer = await ctx.decodeAudioData(await response.arrayBuffer());
+      // 解码会转移 ArrayBuffer 的所有权，传副本以便解码失败后还能重试。
+      const buffer = await ctx.decodeAudioData((await preloadBgm()).slice(0));
       if (buffer.duration <= BGM_LOOP_END_SECONDS) throw new Error('背景音乐长度不足以覆盖循环终点');
       const source = ctx.createBufferSource();
       source.buffer = buffer;
