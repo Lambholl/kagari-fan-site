@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { clamp, damp } from './util/noise.js';
-import { heightAt, canWalkTo } from './world/terrain.js';
+import { heightAt, canWalkTo, isLedgeDrop, surfaceAt } from './world/terrain.js';
 import { SCENE_LAYOUT } from './world/scene-layout.js';
 
 // 主角（瑚太朗）的第一人称控制：WASD 或方向键行走，鼠标环视；触屏有虚拟摇杆。
@@ -19,6 +19,21 @@ const ZOOM_MIN = 1.25;
 const ZOOM_MAX = 8;
 // 滚轮每格（约 100 像素）倍率变化 2 的 1/4 次方，从 2 倍到 8 倍滚 8 格。
 const ZOOM_WHEEL_PIXELS_PER_OCTAVE = 400;
+// 走出崖边后腾空下落；落地处比起跳点低出 FALL_LETHAL 米就算摔死，交给剧情处理。
+// 4 米远高于行走允许的台阶高度，走下普通的小坎只会落地，不会摔死。
+const GRAVITY = 9.8;
+const FALL_LETHAL = 4;
+// 脚下一直没有地面（掉出地形网格）时，下落这么多米后同样算摔死，免得一直往下掉。
+const FALL_VOID = 80;
+// 摔死或撞树后躺在地上的视点高度（米）。
+const EYE_DOWN = 0.3;
+// 撞向主树树根的速度（沿指向树心方向的分量，米/秒）超过这个值就算撞死。
+// 奔跑速度 5 米/秒，正面撞上约 5；与正面夹角超过约 40° 时分量低于 3.8，算擦过；走路速度 2.5 米/秒，怎么撞都不算。
+const TREE_LETHAL = 3.8;
+// 落在走不上去的陡坡上时，沿坡往下滑的水平加速度（米/秒²）。
+const SLIDE_ACCEL = 6;
+// 落在可以走的地面上时，水平速度只保留这个比例。
+const LANDING_KEEP = 0.3;
 
 /** 创建第一人称玩家控制器，同步相机视角和影子替身位置。 */
 export function createPlayer({ camera, dom, hooks = {} }) {
@@ -40,8 +55,12 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     pointerLocked: false,
     touch: false,
     zoom: 1, // 当前放大倍率，平滑趋向 zoomTarget
+    airborne: false, // 走出崖边后正在下落或沿陡坡下滑
+    downed: false, // 摔死或撞树后躺在地上，直到 teleport
   };
   let zoomTarget = 1;
+  // 下落中的脚底高度、竖直速度、起跳点高度，以及是否已通知过摔死。
+  const fall = { feet: 0, vy: 0, top: 0, isReported: false };
   const keys = new Set();
   const vel = new THREE.Vector2();
   const joy = { id: null, sx: 0, sy: 0, x: 0, y: 0 };
@@ -92,6 +111,8 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     zoomTarget = clamp(zoomTarget * 2 ** (-pixels / ZOOM_WHEEL_PIXELS_PER_OCTAVE), ZOOM_MIN, ZOOM_MAX);
   }
   function rotate(dx, dy, sens) {
+    // 躺倒在地上时视线交给剧情，鼠标和触屏都不能转动。
+    if (st.downed) return;
     // 放大后同样的鼠标位移按倍率缩小转角，准星在画面上移动的速度与不放大时一致。
     const turn = sens * lookSensitivity / st.zoom;
     st.yaw -= dx * turn;
@@ -197,6 +218,67 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     hooks.onSit?.(v);
   }
 
+  // 这一步会进入主树树根范围，并且朝树心方向的速度够快。
+  function isTreeCrash(nx, nz) {
+    const { tree } = SCENE_LAYOUT;
+    if (Math.hypot(nx - tree.x, nz - tree.z) >= tree.radius) return false;
+    const dx = tree.x - st.x;
+    const dz = tree.z - st.z;
+    const d = Math.hypot(dx, dz) || 1;
+    return (vel.x * dx + vel.y * dz) / d > TREE_LETHAL;
+  }
+
+  function crashIntoTree() {
+    st.downed = true;
+    st.shake = 1.5;
+    vel.set(0, 0);
+    hooks.onTreeCrash?.();
+  }
+
+  function startFall() {
+    st.airborne = true;
+    fall.feet = fall.top = heightAt(st.x, st.z);
+    fall.vy = 0;
+    fall.isReported = false;
+  }
+
+  // 腾空一帧：按重力下落；碰到可以走的地面就落地，碰到陡坡就贴着坡面往下滑。
+  // (nx, nz) 是这一帧的水平目标位置。
+  function updateFall(nx, nz, dt) {
+    fall.vy -= GRAVITY * dt;
+    fall.feet += fall.vy * dt;
+    const surface = surfaceAt(nx, nz);
+    if (surface && fall.feet <= surface.height) {
+      fall.feet = surface.height;
+      if (surface.normalY >= 0.78) {
+        st.airborne = false;
+        hooks.onLand?.(-fall.vy);
+        st.shake = Math.max(st.shake, Math.min(1.5, -fall.vy * 0.12));
+        if (fall.top - surface.height > FALL_LETHAL) {
+          st.downed = true;
+          vel.set(0, 0);
+          reportFall();
+        } else vel.multiplyScalar(LANDING_KEEP);
+      } else {
+        // 坡面高度沿 x、z 的差分给出下坡方向。
+        const gx = (surfaceAt(nx + 0.25, nz)?.height ?? surface.height) - (surfaceAt(nx - 0.25, nz)?.height ?? surface.height);
+        const gz = (surfaceAt(nx, nz + 0.25)?.height ?? surface.height) - (surfaceAt(nx, nz - 0.25)?.height ?? surface.height);
+        const g = Math.hypot(gx, gz) || 1;
+        vel.x -= (gx / g) * SLIDE_ACCEL * dt;
+        vel.y -= (gz / g) * SLIDE_ACCEL * dt;
+        fall.vy = Math.min(fall.vy, 0);
+      }
+    }
+    if (!surface && fall.top - fall.feet > FALL_VOID) reportFall();
+  }
+
+  // 通知剧情摔死，每次下落只通知一次。
+  function reportFall() {
+    if (fall.isReported) return;
+    fall.isReported = true;
+    hooks.onFall?.();
+  }
+
   function update(dt) {
     // 剧情接管镜头时松开放大。
     if (!st.active) zoomTarget = 1;
@@ -207,7 +289,7 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     // —— 移动 ——
     let mx = 0;
     let mz = 0;
-    if (st.active && !st.moveLocked && !st.sitting && !hooks.inputBlocked?.()) {
+    if (st.active && !st.moveLocked && !st.sitting && !st.downed && !hooks.inputBlocked?.()) {
       if (keys.has('KeyW') || keys.has('ArrowUp')) mz -= 1;
       if (keys.has('KeyS') || keys.has('ArrowDown')) mz += 1;
       if (keys.has('KeyA') || keys.has('ArrowLeft')) mx -= 1;
@@ -227,8 +309,11 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     // yaw = 0 时面朝 -z
     const wx = (mx * cos + mz * sin) * sp;
     const wz = (-mx * sin + mz * cos) * sp;
-    vel.x = damp(vel.x, wx, 10, dt);
-    vel.y = damp(vel.y, wz, 10, dt);
+    // 腾空时不受操控，保持走出崖边时的水平速度。
+    if (!st.airborne) {
+      vel.x = damp(vel.x, wx, 10, dt);
+      vel.y = damp(vel.y, wz, 10, dt);
+    }
     let nx = st.x + vel.x * dt;
     let nz = st.z + vel.y * dt;
 
@@ -247,9 +332,16 @@ export function createPlayer({ camera, dom, hooks = {} }) {
       nz *= WORLD_R / r;
       hooks.onBoundary?.();
     }
-    // 遇陡崖阻挡时，尝试沿单个坐标轴滑动。
-    if (!canWalkTo(nx, nz, st.x, st.z)) {
-      if (canWalkTo(nx, st.z, st.x, st.z)) nz = st.z;
+    if (st.airborne) {
+      updateFall(nx, nz, dt);
+    } else if (isTreeCrash(nx, nz)) {
+      crashIntoTree();
+      nx = st.x;
+      nz = st.z;
+    } else if (!canWalkTo(nx, nz, st.x, st.z)) {
+      // 往下走出崖边就腾空；往上的陡坡和树根仍然挡住，尝试沿单个坐标轴滑动。
+      if (isLedgeDrop(nx, nz, st.x, st.z)) startFall();
+      else if (canWalkTo(nx, st.z, st.x, st.z)) nz = st.z;
       else if (canWalkTo(st.x, nz, st.x, st.z)) nx = st.x;
       else { nx = st.x; nz = st.z; }
     }
@@ -259,14 +351,15 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     st.speed = moved / Math.max(dt, 1e-4);
 
     // —— 视点 ——
-    st.eye = damp(st.eye, st.sitting ? EYE_SIT : EYE_STAND, 5, dt);
+    st.eye = damp(st.eye, st.downed ? EYE_DOWN : st.sitting ? EYE_SIT : EYE_STAND, 5, dt);
     st.lean = damp(st.lean, st.leanTarget, 4, dt);
     const prevBob = st.bob;
-    st.bob += moved * 1.75;
+    // 腾空时没有脚步和起伏。
+    if (!st.airborne) st.bob += moved * 1.75;
     if (Math.floor(prevBob / Math.PI) !== Math.floor(st.bob / Math.PI) && moved > 0) hooks.onStep?.(st.x, st.z, running);
-    const bobAmt = Math.min(1, st.speed / WALK);
+    const bobAmt = st.airborne ? 0 : Math.min(1, st.speed / WALK);
     const bobY = Math.abs(Math.sin(st.bob)) * 0.035 * bobAmt;
-    const ground = heightAt(st.x, st.z);
+    const ground = st.airborne ? fall.feet : heightAt(st.x, st.z);
     st.shake = damp(st.shake, 0, 4, dt);
     const shx = (Math.random() - 0.5) * st.shake * 0.06;
     const shy = (Math.random() - 0.5) * st.shake * 0.06;
@@ -299,6 +392,8 @@ export function createPlayer({ camera, dom, hooks = {} }) {
       st.yaw = yaw;
       st.pitch = pitch;
       st.roll = 0;
+      st.airborne = false;
+      st.downed = false;
       vel.set(0, 0);
     },
     /** 面向某个世界坐标所需的 yaw 和 pitch（弧度）。 */

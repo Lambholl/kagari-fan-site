@@ -170,7 +170,7 @@ export function createDaisies() {
 
   const white = makeDaisyGeometry([1.2, 1.22, 1.3], [1.15, 0.86, 0.22], [0.16, 0.32, 0.16]);
   const black = makeDaisyGeometry([0.035, 0.03, 0.06], [0.62, 0.55, 0.78], [0.1, 0.2, 0.12]);
-  const MAX = 40000;
+  const MAX = 60000;
   const models = {
     white: new THREE.InstancedMesh(white, makeMaterial(uniforms), MAX),
     black: new THREE.InstancedMesh(black, makeMaterial(uniforms), MAX),
@@ -188,27 +188,16 @@ export function createDaisies() {
   const e = new THREE.Euler();
   const s = new THREE.Vector3();
   const p = new THREE.Vector3();
-  let guard = 0;
-  // 约四分之一的花落在远处地面上，总数按此放宽，丘顶密度与只种主平台时相近。
-  const TOTAL = 62000;
-  const RMAX = 110;
-  while (counts.white + counts.black < TOTAL && guard++ < 900000) {
-    // 越靠近丘顶越密
-    const r = Math.pow(rand(), 0.66) * RMAX;
-    const ang = rand() * Math.PI * 2;
-    const x = Math.cos(ang) * r;
-    const z = Math.sin(ang) * r;
+  // 在 (x, z) 处尝试种一朵花，种下返回 true；纸面、崖壁和树根附近不种。
+  // 实际概率为 density 乘以 0.3 至 1.5 的成片疏密系数。
+  function plant(x, z, density) {
     // 给花瓣、茎的倾斜和摇摆留出空隙，避免纸边的花伸进纸面。
-    if (isOnPaper(x, z, PAPER_CLEARANCE)) continue;
+    if (isOnPaper(x, z, PAPER_CLEARANCE)) return false;
     const surface = flowerSurfaceAt(x, z);
-    if (!surface) continue;
+    if (!surface) return false;
+    // 成片的疏密起伏，两片花海共用，接在一起看不出分界。
     const patch = fbm(nPatch, x * 0.11, z * 0.11, 3);
-    // 主角上山的南坡开得最盛
-    const south = 0.55 + 0.45 * smoothstep(-0.4, 0.5, z / (r + 1e-3));
-    // 外圈逐渐稀疏到 0，花海按距离淡出，而不是停在主平台模型的边缘或采样半径上。
-    const fade = (1 - 0.6 * smoothstep(28, RMAX, r)) * (1 - smoothstep(RMAX * 0.64, RMAX, r));
-    const dens = (0.3 + 1.2 * smoothstep(0.34, 0.6, patch)) * fade * south;
-    if (rand() > dens) continue;
+    if (rand() > density * (0.3 + 1.2 * smoothstep(0.34, 0.6, patch))) return false;
     // 白与黑成片交错
     const kind = fbm(nKind, x * 0.07 + 40, z * 0.07 - 13, 3) + (rand() - 0.5) * 0.22;
     const color = kind > 0.54 ? 'black' : 'white';
@@ -218,7 +207,7 @@ export function createDaisies() {
     q.setFromEuler(e);
     s.set(size, size * (0.75 + rand() * 0.6), size);
     const index = counts[color];
-    if (index >= MAX) continue;
+    if (index >= MAX) return false;
     m.compose(p, q, s).toArray(all[color], index * 16);
     counts[color]++;
     const cellX = Math.floor(x / CELL);
@@ -226,6 +215,39 @@ export function createDaisies() {
     const key = `${cellX},${cellZ}`;
     if (!cells.has(key)) cells.set(key, { x: (cellX + 0.5) * CELL, z: (cellZ + 0.5) * CELL, white: [], black: [] });
     cells.get(key)[color].push(index);
+    return true;
+  }
+
+  // 丘顶花海：约四分之一的花落在远处地面上，总数按此放宽，丘顶密度与只种主平台时相近。
+  const HILL_TOTAL = 62000;
+  const RMAX = 110;
+  let planted = 0;
+  let guard = 0;
+  while (planted < HILL_TOTAL && guard++ < 900000) {
+    // 越靠近丘顶越密
+    const r = Math.pow(rand(), 0.66) * RMAX;
+    const ang = rand() * Math.PI * 2;
+    const x = Math.cos(ang) * r;
+    const z = Math.sin(ang) * r;
+    // 主角上山的南坡开得最盛
+    const south = 0.55 + 0.45 * smoothstep(-0.4, 0.5, z / (r + 1e-3));
+    // 外圈逐渐稀疏到 0，花海按距离淡出，而不是停在主平台模型的边缘或采样半径上。
+    const fade = (1 - 0.6 * smoothstep(28, RMAX, r)) * (1 - smoothstep(RMAX * 0.64, RMAX, r));
+    if (plant(x, z, fade * south)) planted++;
+  }
+
+  // 出生点花海：丘顶花海在出生点附近已经稀疏，身后几乎没有花，原作场景图里前景是成片的花。
+  // 以出生点身后约 10 米为中心、半径 55 米均匀撒点，外圈一半逐渐淡出；出生点附近每平方米约 6 朵，与丘顶相近。
+  const MEADOW_TOTAL = 24000;
+  const MEADOW_CENTER = { x: -54, z: 80 };
+  const MEADOW_R = 55;
+  planted = 0;
+  guard = 0;
+  while (planted < MEADOW_TOTAL && guard++ < 400000) {
+    const d = Math.sqrt(rand()) * MEADOW_R;
+    const ang = rand() * Math.PI * 2;
+    const density = (1 - smoothstep(MEADOW_R * 0.5, MEADOW_R, d)) / 1.5;
+    if (plant(MEADOW_CENTER.x + Math.cos(ang) * d, MEADOW_CENTER.z + Math.sin(ang) * d, density)) planted++;
   }
   for (const mesh of Object.values(models)) {
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);

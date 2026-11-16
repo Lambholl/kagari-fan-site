@@ -306,6 +306,56 @@ export function createAudio() {
       else noise({ dur: 0.13, type: 'lowpass', f0: isRunning ? 900 : 620, f1: 240, gain: 0.05, q: 0.5 });
     },
     /**
+     * 播放从高处落到草地上的音效：低沉的闷响加上压倒草叶的沙沙声。
+     * @param {number} strength - 0 至 1，按落地速度换算，1 为摔死的力度。
+     * @returns {void}
+     */
+    land(strength) {
+      if (!ctx || strength <= 0) return;
+      const s = Math.min(1, strength);
+      noise({ dur: 0.18 + 0.4 * s, type: 'lowpass', f0: 380, f1: 45, q: 1.2, gain: 0.15 + 0.45 * s, attack: 0.004 });
+      noise({ dur: 0.12 + 0.2 * s, type: 'bandpass', f0: 1400, f1: 500, q: 0.9, gain: 0.04 + 0.1 * s, attack: 0.003 });
+      // 身体撞上地面的低频冲击：正弦波从 90 赫兹快速降到 35 赫兹。
+      const t = ctx.currentTime;
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(90, t);
+      o.frequency.exponentialRampToValueAtTime(35, t + 0.25);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.5 * s, t + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+      o.connect(g).connect(master);
+      o.start(t);
+      o.stop(t + 0.4);
+    },
+    /**
+     * 播放全速撞上树干的音效：木头的闷响加上身体倒地的冲击。
+     * @returns {void}
+     */
+    treeHit() {
+      if (!ctx) return;
+      const t = ctx.currentTime;
+      // 粗树干被撞时短促的低音：三角波从 170 赫兹略降，很快衰减。
+      const o = ctx.createOscillator();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(170, t);
+      o.frequency.exponentialRampToValueAtTime(120, t + 0.18);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.45, t + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      o.connect(g);
+      g.connect(master);
+      g.connect(wet);
+      o.start(t);
+      o.stop(t + 0.25);
+      noise({ dur: 0.12, type: 'bandpass', f0: 900, f1: 500, q: 2.5, gain: 0.3, attack: 0.002 });
+      // 树叶被震得沙沙作响，然后人倒在草地上。
+      noise({ when: 0.05, dur: 1.4, type: 'highpass', f0: 2800, f1: 2000, q: 0.6, gain: 0.05, attack: 0.08 });
+      setTimeout(() => this.land(0.7), 450);
+    },
+    /**
      * 播放缎带扬起时的渐强音效。
      * @returns {void}
      */

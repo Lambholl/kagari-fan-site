@@ -2,12 +2,14 @@ import * as THREE from 'three';
 import { makeNoise2D, fbm, mulberry32, smoothstep } from '../util/noise.js';
 import { createMoon } from './moon.js';
 import { createSkyDome } from './sky-dome.js';
+import { LUNAR_NORTH_AZIMUTH } from './earth-view.js';
 
 /**
- * 月轮的单位方向，世界坐标以 +y 为天顶、-z 为月面真北。
+ * 月轮（实为地球）的单位方向，世界坐标以 +y 为天顶，月面真北见 `LUNAR_NORTH_AZIMUTH`。
+ * 从出生点看出现在主树右上方，与原图构图相近。
  */
 export const MOON_DIR = (() => {
-  const az = THREE.MathUtils.degToRad(16); // 自正北(-z)向东(+x)偏转
+  const az = LUNAR_NORTH_AZIMUTH + THREE.MathUtils.degToRad(16); // 自月面真北向东偏转
   const el = THREE.MathUtils.degToRad(25);
   return new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el)).normalize();
 })();

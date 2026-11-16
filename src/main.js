@@ -217,6 +217,13 @@ async function boot() {
       },
       onStep: (x, z, running) => audio.step(isOnPaper(x, z), running),
       onBoundary: () => story?.onBoundary(),
+      onFall: () => story?.onFall(),
+      onTreeCrash: () => {
+        audio.treeHit();
+        story?.onTreeCrash();
+      },
+      // 落地速度约 9 米/秒（从 4 米高处落下）以上时按最大力度播放。
+      onLand: (speed) => audio.land((speed - 2) / 7),
       onSit: (v) => ui.setSitLabel(v),
       onJoystick: (on, x, y, dx, dy) => ui.setJoystick(on, x, y, dx, dy),
     },

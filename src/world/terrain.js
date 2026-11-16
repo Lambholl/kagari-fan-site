@@ -23,6 +23,27 @@ export function flowerSurfaceAt(x, z) {
   return surface;
 }
 
+/**
+ * 当前可见地面在 (x, z) 处的高度（米）和法线竖直分量，须在场景加载后调用。
+ * @returns {{ height: number, normalY: number } | null} 网格外返回 null。
+ */
+export function surfaceAt(x, z) {
+  return sampleGround(x, z) ?? null;
+}
+
+/**
+ * 判断从 (fromX, fromZ) 走到 (x, z) 是否是走出崖边：目标处有地面、不在主树树根范围内，
+ * 并且比脚下低出 canWalkTo 允许的台阶高度，或者是往下的陡坡。须在场景加载后调用。
+ * @returns {boolean} canWalkTo 不允许而这里为 true 时，玩家应腾空下落而不是被挡住。
+ */
+export function isLedgeDrop(x, z, fromX, fromZ) {
+  const surface = sampleGround(x, z);
+  if (!surface) return false;
+  if (Math.hypot(x - SCENE_LAYOUT.tree.x, z - SCENE_LAYOUT.tree.z) < SCENE_LAYOUT.tree.radius) return false;
+  const drop = heightAt(fromX, fromZ) - surface.height;
+  return drop > 0.22 + Math.hypot(x - fromX, z - fromZ) * 0.65 || (surface.normalY < 0.78 && drop > 0);
+}
+
 /** 检查一步移动是否符合地面坡度、高度差及主树避让约束，须在场景加载后调用。 */
 export function canWalkTo(x, z, fromX, fromZ) {
   const surface = sampleGround(x, z);

@@ -11,8 +11,6 @@ import { SCENE_LAYOUT } from './world/scene-layout.js';
 // stage 5   被请进纸上，此后自由活动
 
 const SPAWN = SCENE_LAYOUT.spawn;
-const RESPAWN = SCENE_LAYOUT.respawn;
-const FREE_SPAWN = SCENE_LAYOUT.freeSpawn;
 const linear = (k) => k;
 
 /** 创建剧情状态机与逐帧推进逻辑。 */
@@ -133,7 +131,7 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
       S.stage = 5;
       S.glanceTimer = 0;
       S.once.add('free');
-      player.teleport(FREE_SPAWN.x, FREE_SPAWN.z, FREE_SPAWN.yaw, FREE_SPAWN.pitch);
+      player.teleport(SPAWN.x, SPAWN.z, SPAWN.yaw, SPAWN.pitch);
       items.setThermos(true);
       items.setFull(true);
       items.setPose('hold');
@@ -209,7 +207,7 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
       for (const l of lines) await ui.say(l);
     }
     player.setSitting(false);
-    player.teleport(RESPAWN.x, RESPAWN.z, RESPAWN.yaw, RESPAWN.pitch);
+    player.teleport(SPAWN.x, SPAWN.z, SPAWN.yaw, SPAWN.pitch);
     post.desat = 0;
     post.warp = 0;
     ui.setConverge(S.deaths);
@@ -225,6 +223,79 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
         '这一次，停在纸的外面——不要踩上去。',
       ]);
     }
+  }
+
+  // ———————————————————— 彩蛋：摔死与撞树 ————————————————————
+  // 与缎带斩杀分开计数：不推进剧情，也不触发第一次死亡的那段独白。
+  // 每种死法第一次播放完整独白，之后轮流播放短独白。
+  const MISHAPS = {
+    fall: {
+      first: [
+        '脚下忽然一空。',
+        '……啊。这里，是悬崖来着。',
+        '风声灌满了耳朵。月亮在视野里翻了个跟头。',
+        '着地的瞬间，我听见了自己碎掉的声音。',
+        '仰面躺在崖下。月亮正好挂在视野的正中，和刚才一样，没有温度地亮着。',
+        '没有缎带，也没有敌意。只是单纯地，一脚踩空。',
+        '就算已经习惯了死，这也是相当没有出息的一种死法。',
+      ],
+      repeat: [
+        ['又一次，从山丘的边缘迈了出去。', '重力倒是一视同仁。不管是人，还是映在水里的月亮。'],
+        ['下坠的时间比想象中长。长到足够反省。', '……反省的结论是：走路要看脚下。'],
+        ['死因：失足。连说出口都嫌丢人。', '散开，再收束。崖下的雏菊，大概已经认得我了。'],
+      ],
+    },
+    tree: {
+      first: [
+        '迎面而来的，是一整面树皮。',
+        '……啊。这棵树，刚才就在那里来着。',
+        '额头先撞了上去。很结实的声音。不是树的，是我的。',
+        '仰面倒在树根之间。枝叶的缝隙里，月亮若无其事地亮着。',
+        '这棵老树，大概连晃都没晃一下。',
+        '就算已经习惯了死，全速撞树而死，也实在太不像样了。',
+      ],
+      repeat: [
+        ['又一次，全速撞上了树干。', '树是不会让路的。这个道理，我好像还没学会。'],
+        ['奔跑的意义是什么。至少不是为了撞树。', '……树皮的纹路，我大概已经能默写出来了。'],
+        ['死因：撞树。和失足比起来，哪个更丢人呢。', '老树在头顶沙沙作响。听起来，有点像在笑。'],
+      ],
+    },
+  };
+  const mishapCounts = { fall: 0, tree: 0 };
+
+  /**
+   * 摔死或撞树后躺倒在地时调用；kind 为 MISHAPS 的键。独白结束后回到出生点。
+   */
+  async function mishapDeath(kind) {
+    if (S.mode !== 'play') return;
+    // 其他场景正在进行时不叠加独白，直接送回出生点，免得一直躺着动不了。
+    if (S.busy) {
+      player.teleport(SPAWN.x, SPAWN.z, SPAWN.yaw, SPAWN.pitch);
+      return;
+    }
+    lockForScene(false);
+    const { first, repeat } = MISHAPS[kind];
+    const isFirst = mishapCounts[kind] === 0;
+    mishapCounts[kind]++;
+    // 仰面躺倒：视线慢慢转向夜空，画面褪色，然后才出现独白。
+    const p0 = ps.pitch;
+    const r0 = ps.roll;
+    await tl.tween(1.8, (k) => {
+      ps.pitch = lerp(p0, 1.35, k);
+      ps.roll = lerp(r0, 0.12, k);
+      post.desat = k * 0.7;
+    });
+    await tl.wait(0.6);
+    const lines = isFirst ? first : repeat[(mishapCounts[kind] - 2) % repeat.length];
+    for (const l of lines) await ui.say(l);
+    await ui.fade(1, 1.2);
+    if (isFirst) await ui.say('……被搅乱的水面，又静了下来。');
+    player.setSitting(false);
+    player.teleport(SPAWN.x, SPAWN.z, SPAWN.yaw, SPAWN.pitch);
+    post.desat = 0;
+    post.warp = 0;
+    await ui.fade(0, 1.6);
+    unlock();
   }
 
   // ———————————————————— 第一次接近：有力量的语言 ————————————————————
@@ -631,6 +702,20 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
       if (S.mode !== 'play' || S.busy || S.boundaryCooldown > 0) return;
       S.boundaryCooldown = 18;
       ui.narrate(['再往前，就不是“今夜”所在的地方了。']);
+    },
+    /**
+     * 玩家走出崖边、落到崖下地面时调用，播放摔死的独白后送回出生点。
+     * @returns {void}
+     */
+    onFall() {
+      mishapDeath('fall');
+    },
+    /**
+     * 玩家奔跑时正面撞上主树后调用，播放撞死的独白后送回出生点。
+     * @returns {void}
+     */
+    onTreeCrash() {
+      mishapDeath('tree');
     },
   };
 }

@@ -1,8 +1,15 @@
 import * as THREE from 'three';
 
 /**
+ * 月面真北在世界坐标中的方位角（弧度），从 -z 起向 +x 偏转。
+ * 出生点朝向按原图构图定下后，地球要出现在主树右上方；整体转动方位而不是只移动地球，
+ * 观测点仍在月球南极附近，地球的倾斜和可见面不变。
+ */
+export const LUNAR_NORTH_AZIMUTH = THREE.MathUtils.degToRad(82);
+
+/**
  * 按理想潮汐锁定模型计算固定场景的地球朝向和观测角度。
- * 世界坐标以 +y 为天顶、-z 为月面真北，月球的地球直下点取经纬度 0°。
+ * 世界坐标以 +y 为天顶，月面真北见 `LUNAR_NORTH_AZIMUTH`，月球的地球直下点取经纬度 0°。
  * 球心正对东经 75°、北纬 20°，两颗天体的北轴夹角固定为 23.44°，忽略天平动。
  *
  * @param {THREE.Vector3} direction - 单位向量，y 分量须大于 0 且小于 1。
@@ -15,9 +22,14 @@ export function calculateEarthView(direction) {
   const latitude = THREE.MathUtils.degToRad(latitudeDeg);
   const poleTilt = THREE.MathUtils.degToRad(23.44);
   const elevation = Math.asin(direction.y);
-  const azimuth = Math.atan2(direction.x, -direction.z);
+  // 方位角从月面真北起算。
+  const azimuth = Math.atan2(direction.x, -direction.z) - LUNAR_NORTH_AZIMUTH;
   const lunarSiteLatitude = Math.atan2(-Math.cos(elevation) * Math.cos(azimuth), Math.sin(elevation));
-  const lunarNorth = new THREE.Vector3(0, Math.sin(lunarSiteLatitude), -Math.cos(lunarSiteLatitude));
+  const northX = Math.sin(LUNAR_NORTH_AZIMUTH);
+  const northZ = -Math.cos(LUNAR_NORTH_AZIMUTH);
+  const lunarNorth = new THREE.Vector3(
+    northX * Math.cos(lunarSiteLatitude), Math.sin(lunarSiteLatitude), northZ * Math.cos(lunarSiteLatitude),
+  );
   const forward = direction.clone().negate();
   const screenRight = new THREE.Vector3().crossVectors(THREE.Object3D.DEFAULT_UP, forward).normalize();
   const screenUp = new THREE.Vector3().crossVectors(forward, screenRight);

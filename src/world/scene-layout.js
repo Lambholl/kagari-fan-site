@@ -5,7 +5,6 @@ export const SCENE_LAYOUT = {
   offsetX: -6,
   offsetZ: 6.9,
   tree: { x: -5.15697162, z: -5.39702136, radius: 2 },
-  spawn: { x: 0, z: 90, yaw: 0, pitch: 0.06 },
-  respawn: { x: -1.3, z: 25, yaw: -0.07, pitch: 0.05 },
-  freeSpawn: { x: -1.2, z: 7.5, yaw: -0.12, pitch: 0 },
+  // 剧情开场、自由漫步和各种死法复活后共用的出生点：西南坡下的花海里仰望山顶，主树在左上、地球在右上，构图接近原作的场景图。
+  spawn: { x: -49, z: 71.2, yaw: -1.09, pitch: 0.1 },
 };
