@@ -13,38 +13,95 @@ function hash(x, y, seed) {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-const fade = (t) => t * t * (3 - 2 * t);
-
-/** u、v 取 0 至 1，period 个格点后首尾相接，用于生成无缝平铺的贴图。 */
-function periodicNoise(u, v, period, seed) {
-  const x = u * period;
-  const y = v * period;
-  const xi = Math.floor(x);
-  const yi = Math.floor(y);
-  const fx = fade(x - xi);
-  const fy = fade(y - yi);
-  const x0 = ((xi % period) + period) % period;
-  const y0 = ((yi % period) + period) % period;
-  const x1 = (x0 + 1) % period;
-  const y1 = (y0 + 1) % period;
-  const a = hash(x0, y0, seed);
-  const b = hash(x1, y0, seed);
-  const c = hash(x0, y1, seed);
-  const d = hash(x1, y1, seed);
-  return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
-}
-
-function periodicFbm(u, v, period, octaves, seed) {
-  let sum = 0;
-  let amp = 0.5;
-  let norm = 0;
-  for (let o = 0; o < octaves; o++) {
-    sum += periodicNoise(u, v, period << o, seed + o * 17) * amp;
-    norm += amp;
-    amp *= 0.5;
+// 原地基 2 快速傅里叶变换，长度必须是 2 的幂；只用来合成随机相位的噪声，正反方向和缩放都不影响结果，所以不区分。
+function fft(re, im) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      [re[i], re[j]] = [re[j], re[i]];
+      [im[i], im[j]] = [im[j], im[i]];
+    }
   }
-  return sum / norm;
+  for (let len = 2; len <= n; len <<= 1) {
+    const half = len >> 1;
+    const angle = (-2 * Math.PI) / len;
+    const wr = Math.cos(angle);
+    const wi = Math.sin(angle);
+    for (let start = 0; start < n; start += len) {
+      let cr = 1;
+      let ci = 0;
+      for (let k = 0; k < half; k++) {
+        const a = start + k;
+        const b = a + half;
+        const tr = re[b] * cr - im[b] * ci;
+        const ti = re[b] * ci + im[b] * cr;
+        re[b] = re[a] - tr;
+        im[b] = im[a] - ti;
+        re[a] += tr;
+        im[a] += ti;
+        const next = cr * wr - ci * wi;
+        ci = cr * wi + ci * wr;
+        cr = next;
+      }
+    }
+  }
 }
+
+/**
+ * 频域合成的无缝噪声：每个频率取随机相位、按 amplitude 给定振幅，再变换回空间域。
+ * 频率都是整数周期，所以首尾相接；没有格点，也不会像值噪声那样在格点处坡度为 0、各层格点对齐成规则的平点。
+ * 返回均值 0、标准差 1 的 size × size 数组。
+ */
+function spectralNoise(size, amplitude, seed) {
+  const count = size * size;
+  const re = new Float64Array(count);
+  const im = new Float64Array(count);
+  for (let y = 0; y < size; y++) {
+    const fy = y <= size / 2 ? y : y - size;
+    for (let x = 0; x < size; x++) {
+      const fx = x <= size / 2 ? x : x - size;
+      const f = Math.hypot(fx, fy);
+      const a = f > 0 ? amplitude(f) : 0;
+      const phase = hash(x, y, seed) * Math.PI * 2;
+      re[y * size + x] = a * Math.cos(phase);
+      im[y * size + x] = a * Math.sin(phase);
+    }
+  }
+  const rowRe = new Float64Array(size);
+  const rowIm = new Float64Array(size);
+  for (let pass = 0; pass < 2; pass++) {
+    // 第一遍按行、第二遍按列做一维变换。
+    const stride = pass === 0 ? 1 : size;
+    const step = pass === 0 ? size : 1;
+    for (let line = 0; line < size; line++) {
+      for (let i = 0; i < size; i++) {
+        rowRe[i] = re[line * step + i * stride];
+        rowIm[i] = im[line * step + i * stride];
+      }
+      fft(rowRe, rowIm);
+      for (let i = 0; i < size; i++) {
+        re[line * step + i * stride] = rowRe[i];
+        im[line * step + i * stride] = rowIm[i];
+      }
+    }
+  }
+  // 相位不对称，结果是复数；实部本身就是同一频谱的随机场。
+  let mean = 0;
+  for (let i = 0; i < count; i++) mean += re[i];
+  mean /= count;
+  let variance = 0;
+  for (let i = 0; i < count; i++) variance += (re[i] - mean) ** 2;
+  const scale = 1 / Math.sqrt(variance / count || 1);
+  const out = new Float32Array(count);
+  for (let i = 0; i < count; i++) out[i] = (re[i] - mean) * scale;
+  return out;
+}
+
+// 平滑截掉低于 low 个周期的频率，避免出现与平铺尺寸相当的大块、暴露平铺周期。
+const highPass = (f, low) => 1 - Math.exp(-((f / low) ** 4));
 
 function normalize(values) {
   let min = Infinity;
@@ -62,19 +119,25 @@ function normalize(values) {
  *
  * R 为草叶颗粒，G 为成团起伏的低频噪声，取值 0 至 1、均值约 0.5；B 恒为 0，A 恒为 1。
  * @param {number} [size=512] - 边长（像素），必须是 2 的幂。
- * @returns {THREE.DataTexture} 线性色彩空间、重复平铺、带 mipmap 的贴图。
+ * @returns {THREE.DataTexture} 半浮点、线性色彩空间、重复平铺、带完整 mipmap 链的贴图。
+ *   `userData.slope` 记录边长 `size`、两个通道的平均坡度平方（每像素高度差的平方，`grain`、`clump`），
+ *   以及从第 0 级起每级 mipmap 保留的坡度能量比例（`grainRetained`、`clumpRetained`，首项为 1）。
  */
 export function createGroundDetailTexture(size = 512) {
   const count = size * size;
+  // 草叶底纹：约 50 至 200 个周期的宽频噪声，再叠加逐像素随机值。
+  const grainBase = spectralNoise(size, (f) => highPass(f, 48) * Math.exp(-((f / 160) ** 2)), 3);
+  // 成团起伏：振幅按频率平方反比衰减，每高一个八度起伏减半，与原先五层分形噪声的频谱相同；约 4 个周期以下截掉。
+  const clumpBase = spectralNoise(size, (f) => (highPass(f, 4) * Math.exp(-((f / 80) ** 2))) / (f * f), 11);
   const grain = new Float32Array(count);
   const clump = new Float32Array(count);
+  const clamp01 = (v) => Math.min(1, Math.max(0, v));
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const i = y * size + x;
-      const u = x / size;
-      const v = y / size;
-      grain[i] = 0.3 * periodicNoise(u, v, size >> 2, 3) + 0.15 * hash(x, y, 5);
-      clump[i] = periodicFbm(u, v, 4, 5, 11);
+      grain[i] = 0.3 * clamp01(0.5 + 0.17 * grainBase[i]) + 0.15 * hash(x, y, 5);
+      // 标准差 0.17 与原先分形噪声拉伸到 0 至 1 后相近，超出 3 个标准差的极少数值截断。
+      clump[i] = clamp01(0.5 + 0.17 * clumpBase[i]);
     }
   }
   // 草叶：随机方向的短亮线，从斜上方看像一根根叶尖；绕边界取模保证平铺无缝。
@@ -93,21 +156,69 @@ export function createGroundDetailTexture(size = 512) {
     }
   }
   normalize(grain);
-  normalize(clump);
-  const data = new Uint8Array(count * 4);
-  for (let i = 0; i < count; i++) {
-    data[i * 4] = Math.round(grain[i] * 255);
-    data[i * 4 + 1] = Math.round(clump[i] * 255);
-    data[i * 4 + 3] = 255;
+  // 存成半浮点：8 位存高度时每级 1/255，缓坡上连续几个像素取值相同、再跳一级，
+  // 凹凸光照会沿等高线画出一圈圈环纹；半浮点在 0.5 至 1 之间每级约 1/2048，台阶小到看不出。
+  // 在 CPU 上逐级 2×2 平均生成 mipmap，不依赖浮点贴图能否作为渲染目标。
+  const mipmaps = [];
+  // 每级 mipmap 里两个通道的坡度能量（第 0 级像素为单位），供着色器估算被过滤掉的起伏。
+  const slopeEnergy = [[], []];
+  let levelSize = size;
+  let channels = [grain, clump];
+  for (;;) {
+    const texelScale = size / levelSize;
+    channels.forEach((src, c) => slopeEnergy[c].push(meanSlopeSquared(src, levelSize) / (texelScale * texelScale)));
+    const data = new Uint16Array(levelSize * levelSize * 4);
+    const one = THREE.DataUtils.toHalfFloat(1);
+    for (let i = 0; i < levelSize * levelSize; i++) {
+      data[i * 4] = THREE.DataUtils.toHalfFloat(channels[0][i]);
+      data[i * 4 + 1] = THREE.DataUtils.toHalfFloat(channels[1][i]);
+      data[i * 4 + 3] = one;
+    }
+    mipmaps.push({ data, width: levelSize, height: levelSize });
+    if (levelSize === 1) break;
+    const next = levelSize >> 1;
+    channels = channels.map((src) => {
+      const dst = new Float32Array(next * next);
+      for (let y = 0; y < next; y++) {
+        for (let x = 0; x < next; x++) {
+          const i = 2 * y * levelSize + 2 * x;
+          dst[y * next + x] = (src[i] + src[i + 1] + src[i + levelSize] + src[i + levelSize + 1]) / 4;
+        }
+      }
+      return dst;
+    });
+    levelSize = next;
   }
-  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  const texture = new THREE.DataTexture(mipmaps[0].data, size, size, THREE.RGBAFormat, THREE.HalfFloatType);
+  texture.mipmaps = mipmaps;
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.magFilter = THREE.LinearFilter;
   texture.minFilter = THREE.LinearMipmapLinearFilter;
-  texture.generateMipmaps = true;
+  texture.generateMipmaps = false;
   texture.anisotropy = 8;
   texture.needsUpdate = true;
+  texture.userData.slope = {
+    size,
+    grain: slopeEnergy[0][0],
+    clump: slopeEnergy[1][0],
+    grainRetained: slopeEnergy[0].map((e) => e / slopeEnergy[0][0]),
+    clumpRetained: slopeEnergy[1].map((e) => e / slopeEnergy[1][0]),
+  };
   return texture;
+}
+
+// 无缝贴图的平均坡度平方：按相邻像素前向差分计算，与双线性插值后每格内的坡度一致。
+function meanSlopeSquared(values, n) {
+  let sum = 0;
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const v = values[y * n + x];
+      const gx = values[y * n + ((x + 1) % n)] - v;
+      const gy = values[((y + 1) % n) * n + x] - v;
+      sum += gx * gx + gy * gy;
+    }
+  }
+  return sum / (n * n);
 }
 
 const vertexPars = /* glsl */ `
@@ -199,19 +310,63 @@ vec4 groundSampleNoTile(vec2 uv, vec2 dx, vec2 dy, float k) {
   return 0.5 + (mix(a, b, w) - 0.5) / sqrt(w * w + (1.0 - w) * (1.0 - w));
 }
 
+// 草地两层起伏的高度（米）和采样频率（每米多少个贴图周期），坡度方差估算与采样共用。
+const float GRAIN_AMP = 0.008;
+const float GRAIN_FREQ = 0.8;
+const float CLUMP_AMP = 0.04;
+const float CLUMP_SMALL_FREQ = 0.19;
+const float CLUMP_LARGE_FREQ = 0.071;
+const float CLUMP_SMALL_WEIGHT = 0.7;
+const float CLUMP_LARGE_WEIGHT = 0.6;
+
 /** 草叶颗粒，平铺尺寸 1.25 米；dp 为当前像素位置到相邻像素的世界坐标差。 */
 float grassGrain(vec2 p, vec2 dpx, vec2 dpy, float k) {
-  return groundSampleNoTile(p * 0.8, dpx * 0.8, dpy * 0.8, k).r;
+  return groundSampleNoTile(p * GRAIN_FREQ, dpx * GRAIN_FREQ, dpy * GRAIN_FREQ, k).r;
 }
 
-/** 成团起伏，平铺尺寸约 5.3 米。 */
-float grassClump(vec2 p, vec2 dpx, vec2 dpy, float k) {
-  return groundSampleNoTile(ROTATE_A * p * 0.19, ROTATE_A * dpx * 0.19, ROTATE_A * dpy * 0.19, k).g;
+/**
+ * 成团起伏，均值 0.5。同一张贴图按约 5.3 米和 14 米两种平铺尺寸、两个角度各采样一次再叠加：
+ * 单一尺寸的团块大小一致、分布均匀，放大看远处时很规律；两种尺寸的比例不是整数，叠加后的图案不会对齐重复。
+ * k 的两个分量分别给两次采样做哈希偏移。
+ */
+float grassClump(vec2 p, vec2 dpx, vec2 dpy, vec2 k) {
+  const float s = CLUMP_SMALL_FREQ;
+  const float l = CLUMP_LARGE_FREQ;
+  float small = groundSampleNoTile(ROTATE_A * p * s, ROTATE_A * dpx * s, ROTATE_A * dpy * s, k.x).g;
+  float large = groundSampleNoTile(ROTATE_B * p * l + 0.37, ROTATE_B * dpx * l, ROTATE_B * dpy * l, k.y).g;
+  // 两次采样互不相关，系数平方和约为 0.85，叠加后对比度与原先单次采样相近。
+  return 0.5 + (small - 0.5) * CLUMP_SMALL_WEIGHT + (large - 0.5) * CLUMP_LARGE_WEIGHT;
 }
 
-/** 草地起伏高度（米）；fineFade、clumpFade 为 0 时分别去掉草叶颗粒和成团起伏。 */
-float grassHeight(vec2 p, vec2 dpx, vec2 dpy, vec2 k, float fineFade, float clumpFade) {
-  return (grassGrain(p, dpx, dpy, k.x) - 0.5) * 0.008 * fineFade + (grassClump(p, dpx, dpy, k.y) - 0.5) * 0.04 * clumpFade;
+/** 草地起伏高度（米）；fineFade、clumpFade 为 0 时分别去掉草叶颗粒和成团起伏；k.x 给草叶颗粒、k.yz 给成团起伏做哈希偏移。 */
+float grassHeight(vec2 p, vec2 dpx, vec2 dpy, vec3 k, float fineFade, float clumpFade) {
+  return (grassGrain(p, dpx, dpy, k.x) - 0.5) * GRAIN_AMP * fineFade + (grassClump(p, dpx, dpy, k.yz) - 0.5) * CLUMP_AMP * clumpFade;
+}
+
+// 一层贴图起伏在屏幕上还能画出的坡度能量比例。spacing 为相邻像素在地面上的距离（米），freq 为该层每米的贴图周期数；
+// 按 spacing 覆盖的贴图像素数换算 mipmap 级别，再查表。
+float detailRetained(float retained[DETAIL_LEVELS], float spacing, float freq) {
+  float lod = clamp(log2(spacing * freq * DETAIL_SIZE), 0.0, float(DETAIL_LEVELS - 1));
+  int i = int(lod);
+  return mix(retained[i], retained[min(i + 1, DETAIL_LEVELS - 1)], fract(lod));
+}
+
+// 一层起伏被 mipmap 过滤和淡出去掉的坡度方差（世界坐标下坡度的平方）；
+// energy 为贴图每像素高度差的平方，scale 为贴图取值到米的换算，屏幕两个方向分别估算后取平均。
+float detailLostSlope2(float retained[DETAIL_LEVELS], float energy, float scale, float freq, float fade, vec2 steps) {
+  float texelSlope = scale * freq * DETAIL_SIZE;
+  float kept = 0.5 * (detailRetained(retained, steps.x, freq) + detailRetained(retained, steps.y, freq)) * fade * fade;
+  return energy * texelSlope * texelSlope * (1.0 - kept);
+}
+
+/**
+ * 草地起伏中画不出来的坡度方差，供 Toksvig 法缩短法线、加大粗糙度。
+ * 近处凹凸光照下各像素法线朝向不一，平均亮度比平地低；远处起伏被过滤掉后按平地着色会偏亮，这里把差值补回去。
+ */
+float grassLostSlope2(vec2 steps, float fineFade, float clumpFade) {
+  return detailLostSlope2(GRAIN_RETAINED, GRAIN_SLOPE2, GRAIN_AMP, GRAIN_FREQ, fineFade, steps)
+    + detailLostSlope2(CLUMP_RETAINED, CLUMP_SLOPE2, CLUMP_AMP * CLUMP_SMALL_WEIGHT, CLUMP_SMALL_FREQ, clumpFade, steps)
+    + detailLostSlope2(CLUMP_RETAINED, CLUMP_SLOPE2, CLUMP_AMP * CLUMP_LARGE_WEIGHT, CLUMP_LARGE_FREQ, clumpFade, steps);
 }
 
 /** 岩面采样坐标的低频扭曲，让脊状折痕弯曲断续；只随位置缓慢变化，相邻像素可共用同一个偏移。 */
@@ -252,6 +407,7 @@ float rockHeight(vec3 p, float footprint) {
 const albedoFragment = /* glsl */ `
 vec3 groundAlbedo;
 vec2 groundBumpGrad;
+float groundLostSlope2;
 {
   vec3 dpx = dFdx(vGroundPos);
   vec3 dpy = dFdy(vGroundPos);
@@ -268,13 +424,14 @@ vec2 groundBumpGrad;
   // 烘焙贴图中远处地面在 400 米内亮度基本不变，700 米外降到约 35%，这里用平滑的径向渐变代替。
   grass *= mix(1.0, 0.35, smoothstep(350.0, 800.0, length(p)));
   groundBumpGrad = vec2(0.0);
+  groundLostSlope2 = grassLostSlope2(vec2(length(dpx), length(dpy)), fineFade, clumpFade);
   // 细节完全淡出的远处跳过贴图采样。
   if (clumpFade > 0.0) {
-    vec2 k = vec2(groundValueNoise(p * 0.55 + 5.3), groundValueNoise(p * 0.09 + 9.1));
+    vec3 k = vec3(groundValueNoise(p * 0.55 + 5.3), groundValueNoise(p * 0.09 + 9.1), groundValueNoise(p * 0.035 + 1.7));
     float grain = grassGrain(p, dpx.xz, dpy.xz, k.x);
-    float clump = grassClump(p, dpx.xz, dpy.xz, k.y);
+    float clump = grassClump(p, dpx.xz, dpy.xz, k.yz);
     grass *= (1.0 + (0.8 * clump - 0.4) * clumpFade) * (1.0 + (0.8 * grain - 0.4) * fineFade);
-    float h = (grain - 0.5) * 0.008 * fineFade + (clump - 0.5) * 0.04 * clumpFade;
+    float h = (grain - 0.5) * GRAIN_AMP * fineFade + (clump - 0.5) * CLUMP_AMP * clumpFade;
     groundBumpGrad = vec2(
       grassHeight(p + dpx.xz, dpx.xz, dpy.xz, k, fineFade, clumpFade) - h,
       grassHeight(p + dpy.xz, dpx.xz, dpy.xz, k, fineFade, clumpFade) - h
@@ -301,6 +458,8 @@ vec2 groundBumpGrad;
       rockGrad = vec2(rockHeight(rockPos + dpx, footprint) - r, rockHeight(rockPos + dpy, footprint) - r) * rockFade;
     }
     groundBumpGrad = mix(groundBumpGrad, rockGrad, rock);
+    // 岩面起伏不做方差补偿。
+    groundLostSlope2 *= 1.0 - rock;
   }
 #endif
   diffuseColor.rgb *= groundAlbedo;
@@ -317,8 +476,29 @@ const bumpFragment = /* glsl */ `
   float det = dot(sigmaX, r1) * faceDirection;
   vec3 grad = sign(det) * (groundBumpGrad.x * r1 + groundBumpGrad.y * r2);
   normal = normalize(abs(det) * normal - grad);
+  // Toksvig：一个像素内法线的平均值比单位长度短，坡度方差为 σ² 时约为 1/sqrt(1+σ²)。
+  // 平行光和半球光的漫反射都与法线点乘，缩短后远处被过滤掉起伏的地面与近处凹凸地面的平均亮度一致。
+  normal *= inversesqrt(1.0 + groundLostSlope2);
 }
 `;
+
+// GGX 坡度分布的方差为 α²（α 为粗糙度的平方），叠加画不出来的坡度方差后再换回粗糙度。
+const roughnessFragment = /* glsl */ `
+roughnessFactor = sqrt(sqrt(min(1.0, pow4(roughnessFactor) + groundLostSlope2)));
+`;
+
+// 细节贴图的坡度统计，生成贴图时算出，写成着色器常量。
+function slopeConstants({ size, grain, clump, grainRetained, clumpRetained }) {
+  const list = (values) => values.map((v) => v.toFixed(6)).join(', ');
+  return /* glsl */ `
+#define DETAIL_LEVELS ${grainRetained.length}
+const float DETAIL_SIZE = ${size.toFixed(1)};
+const float GRAIN_SLOPE2 = ${grain.toExponential(6)};
+const float CLUMP_SLOPE2 = ${clump.toExponential(6)};
+const float GRAIN_RETAINED[DETAIL_LEVELS] = float[DETAIL_LEVELS](${list(grainRetained)});
+const float CLUMP_RETAINED[DETAIL_LEVELS] = float[DETAIL_LEVELS](${list(clumpRetained)});
+`;
+}
 
 /**
  * 把地形材质的颜色改为程序地面细节，并让自发光跟随新的颜色；会覆盖材质原有的 onBeforeCompile。
@@ -337,8 +517,9 @@ export function applyGroundDetail(material, { detail, hasRock }) {
       .replace('#include <common>', `#include <common>\n${vertexPars}`)
       .replace('#include <fog_vertex>', `#include <fog_vertex>\n${vertexMain}`);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\n${fragmentPars}`)
+      .replace('#include <common>', `#include <common>\n${slopeConstants(detail.userData.slope)}\n${fragmentPars}`)
       .replace('#include <map_fragment>', albedoFragment)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\n${roughnessFragment}`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${bumpFragment}`)
       .replace('#include <emissivemap_fragment>', 'totalEmissiveRadiance *= groundAlbedo;');
   };
