@@ -38,6 +38,7 @@ export function createPlayer({ camera, dom, hooks = {} }) {
   const joy = { id: null, sx: 0, sy: 0, x: 0, y: 0 };
   const lookTouch = { id: null, x: 0, y: 0 };
   let dragging = false;
+  let lookSensitivity = 1;
 
   camera.rotation.order = 'YXZ';
 
@@ -73,8 +74,8 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     keys.delete(e.code);
   }
   function rotate(dx, dy, sens) {
-    st.yaw -= dx * sens;
-    st.pitch = clamp(st.pitch - dy * sens, -1.45, 1.45);
+    st.yaw -= dx * sens * lookSensitivity;
+    st.pitch = clamp(st.pitch - dy * sens * lookSensitivity, -1.45, 1.45);
   }
   function onMouseMove(e) {
     if (!st.active) return;
@@ -136,7 +137,8 @@ export function createPlayer({ camera, dom, hooks = {} }) {
         hooks.onJoystick?.(true, joy.sx, joy.sy, joy.x * 56, joy.y * 56);
         if (st.sitting && !st.moveLocked && m > 20) setSitting(false);
       } else if (t.identifier === lookTouch.id) {
-        rotate(-(t.clientX - lookTouch.x), -(t.clientY - lookTouch.y), 0.0052);
+        // 手指往哪边划，视线就往哪边转，和指针锁定时的鼠标方向一致。
+        rotate(t.clientX - lookTouch.x, t.clientY - lookTouch.y, 0.0052);
         lookTouch.x = t.clientX;
         lookTouch.y = t.clientY;
       }
@@ -252,6 +254,14 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     body,
     update,
     setSitting,
+    /**
+     * 设置鼠标和触屏环视的灵敏度倍率。
+     * @param {number} multiplier - 1 为默认速度，必须大于 0。
+     * @returns {void}
+     */
+    setLookSensitivity(multiplier) {
+      lookSensitivity = multiplier;
+    },
     teleport(x, z, yaw, pitch = 0) {
       st.x = x;
       st.z = z;

@@ -154,6 +154,16 @@ kbd {
   z-index: 10;
   pointer-events: none;
 }
+/* 游戏中与 HUD 同层，仍被闪白和章节卡盖住；标题画面显示时提到标题之上，进游戏前也能调设置。 */
+#corner {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+body:has(#title:not(.gone)) #corner {
+  z-index: 31;
+}
 #chapter-tag {
   position: absolute;
   top: max(18px, env(safe-area-inset-top));
@@ -248,14 +258,14 @@ kbd {
   margin: 6px 0 0;
   line-height: 1.45;
 }
-#volume-control {
+.range-control {
   display: flex;
   align-items: center;
   gap: 10px;
   min-height: 36px;
   margin-bottom: 4px;
 }
-#volume {
+.range-control input {
   flex: 1;
   min-width: 0;
   height: 24px;
@@ -263,12 +273,12 @@ kbd {
   accent-color: #bfe6ff;
   cursor: pointer;
 }
-#volume:focus-visible {
+.range-control input:focus-visible {
   outline: 2px solid var(--moon);
   outline-offset: 3px;
   border-radius: 4px;
 }
-#volume-value {
+.range-control output {
   min-width: 4ch;
   color: var(--moon);
   text-align: right;

@@ -18,33 +18,6 @@
     <div id="hud" hidden>
       <div id="chapter-tag"></div>
       <div id="converge" hidden></div>
-      <div id="top-buttons">
-        <button id="btn-sound" type="button" title="声音开关" aria-label="声音开关">♪</button>
-        <button id="btn-settings" type="button" title="设置" aria-label="设置" aria-controls="settings" aria-expanded="false">&#x2699;&#xFE0E;</button>
-        <button id="btn-help" type="button" title="操作说明" aria-label="操作说明" aria-controls="help" aria-expanded="false">?</button>
-      </div>
-      <section id="settings" aria-labelledby="settings-title" hidden>
-        <h2 id="settings-title">设置</h2>
-        <label for="volume">音量</label>
-        <div id="volume-control">
-          <input id="volume" type="range" min="0" max="100" step="1" value="50" aria-valuetext="50%" />
-          <output id="volume-value" for="volume">50%</output>
-        </div>
-        <label for="antialias">抗锯齿</label>
-        <select id="antialias" aria-describedby="antialias-hint">
-          <option value="off">关闭</option>
-          <option value="fxaa" selected>快捷（FXAA）</option>
-          <option value="smaa">精细（SMAA）</option>
-          <option value="taa">稳像（TAA）</option>
-        </select>
-        <p id="antialias-hint">走动时花草闪动明显，可试稳像档；如果觉得有拖影，切回精细档。</p>
-      </section>
-      <div id="help" hidden>
-        <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 行走　<kbd>Shift</kbd> 奔跑</p>
-        <p><kbd>鼠标</kbd> 环视　<kbd>C</kbd> 坐下 / 起身</p>
-        <p><kbd>E</kbd> 行动　<kbd>空格</kbd> 推进文字</p>
-        <p><kbd>Esc</kbd> 释放鼠标</p>
-      </div>
       <div id="prompt" hidden><kbd>E</kbd><span></span></div>
       <div id="subtitle" hidden>
         <div class="speaker"></div>
@@ -99,6 +72,41 @@
         </p>
       </div>
     </section>
+
+    <div id="corner">
+      <div id="top-buttons">
+        <button id="btn-sound" type="button" title="声音开关" aria-label="声音开关">♪</button>
+        <button id="btn-settings" type="button" title="设置" aria-label="设置" aria-controls="settings" aria-expanded="false">&#x2699;&#xFE0E;</button>
+        <button id="btn-help" type="button" title="操作说明" aria-label="操作说明" aria-controls="help" aria-expanded="false" hidden>?</button>
+      </div>
+      <section id="settings" aria-labelledby="settings-title" hidden>
+        <h2 id="settings-title">设置</h2>
+        <label for="volume">音量</label>
+        <div class="range-control">
+          <input id="volume" type="range" min="0" max="100" step="1" value="50" aria-valuetext="50%" />
+          <output id="volume-value" for="volume">50%</output>
+        </div>
+        <label for="sensitivity">视角灵敏度</label>
+        <div class="range-control">
+          <input id="sensitivity" type="range" min="20" max="300" step="5" value="100" aria-valuetext="100%" />
+          <output id="sensitivity-value" for="sensitivity">100%</output>
+        </div>
+        <label for="antialias">抗锯齿</label>
+        <select id="antialias" aria-describedby="antialias-hint">
+          <option value="off">关闭</option>
+          <option value="fxaa" selected>快捷（FXAA）</option>
+          <option value="smaa">精细（SMAA）</option>
+          <option value="taa">稳像（TAA）</option>
+        </select>
+        <p id="antialias-hint">走动时花草闪动明显，可试稳像档；如果觉得有拖影，切回精细档。</p>
+      </section>
+      <div id="help" hidden>
+        <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 行走　<kbd>Shift</kbd> 奔跑</p>
+        <p><kbd>鼠标</kbd> 环视　<kbd>C</kbd> 坐下 / 起身</p>
+        <p><kbd>E</kbd> 行动　<kbd>空格</kbd> 推进文字</p>
+        <p><kbd>Esc</kbd> 释放鼠标</p>
+      </div>
+    </div>
 
     <script type="module" src="./src/main.js"></script>
   </body>

@@ -56,6 +56,8 @@ export function createUI(timeline) {
     settingsBox: $('settings'),
     volume: $('volume'),
     volumeValue: $('volume-value'),
+    sensitivity: $('sensitivity'),
+    sensitivityValue: $('sensitivity-value'),
     antialias: $('antialias'),
     help: $('btn-help'),
     helpBox: $('help'),
@@ -246,8 +248,11 @@ export function createUI(timeline) {
       el.converge.hidden = n <= 0;
       el.converge.textContent = `再收束 × ${n}`;
     },
+    /** 显示或隐藏游戏 HUD；操作说明按钮随 HUD 一起显示，标题画面已列出按键所以不显示。 */
     showHud(v) {
       el.hud.hidden = !v;
+      el.help.hidden = !v;
+      if (!v && !el.helpBox.hidden) showPanel(null);
     },
     hideTitle() {
       el.title.classList.add('gone');
@@ -283,6 +288,15 @@ export function createUI(timeline) {
       el.volume.value = String(percentage);
       el.volume.setAttribute('aria-valuetext', `${percentage}%`);
       el.volumeValue.textContent = `${percentage}%`;
+    },
+    /**
+     * 显示视角灵敏度的百分比。
+     * @param {number} percentage - 滑条的值，100 为默认速度。
+     * @returns {void}
+     */
+    setSensitivityLabel(percentage) {
+      el.sensitivity.setAttribute('aria-valuetext', `${percentage}%`);
+      el.sensitivityValue.textContent = `${percentage}%`;
     },
     setTouchMode,
     get isTouch() {

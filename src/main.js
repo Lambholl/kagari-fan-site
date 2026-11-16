@@ -18,7 +18,7 @@ import { createRibbons } from './kagari/ribbons.js';
 import { createPlayer } from './player.js';
 import { createItems } from './items.js';
 import { createUI, createLoadingView } from './ui.js';
-import { bindSelectSetting } from './settings.js';
+import { bindSelectSetting, bindRangeSetting } from './settings.js';
 import { createAudio, preloadBgm } from './audio.js';
 import { onLoadingProgress, trackLoad, loadingStep, finishLoading } from './loading.js';
 import { createStory } from './story.js';
@@ -222,6 +222,10 @@ async function boot() {
     },
   });
   scene.add(player.body);
+  bindRangeSetting(ui.el.sensitivity, 'kagari.sensitivity', (percentage) => {
+    player.setLookSensitivity(percentage / 100);
+    ui.setSensitivityLabel(percentage);
+  });
   story = createStory({ ui, tl, player, kagari, ribbons, paper, sky, items, audio, post, camera });
 
   ui.el.start.addEventListener('click', () => story.begin(false));
