@@ -75,6 +75,10 @@
 
     <div id="corner">
       <div id="top-buttons">
+        <button id="btn-fullscreen" type="button" title="全屏" aria-label="全屏" aria-pressed="false" hidden>
+          <svg class="icon-enter" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" /></svg>
+          <svg class="icon-exit" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" /></svg>
+        </button>
         <button id="btn-sound" type="button" title="声音开关" aria-label="声音开关">♪</button>
         <button id="btn-settings" type="button" title="设置" aria-label="设置" aria-controls="settings" aria-expanded="false">&#x2699;&#xFE0E;</button>
         <button id="btn-help" type="button" title="操作说明" aria-label="操作说明" aria-controls="help" aria-expanded="false" hidden>?</button>
@@ -90,6 +94,11 @@
         <div class="range-control">
           <input id="sensitivity" type="range" min="20" max="300" step="5" value="100" aria-valuetext="100%" />
           <output id="sensitivity-value" for="sensitivity">100%</output>
+        </div>
+        <label for="fov">视场角</label>
+        <div class="range-control">
+          <input id="fov" type="range" min="50" max="90" step="1" value="62" aria-valuetext="62°" />
+          <output id="fov-value" for="fov">62°</output>
         </div>
         <label for="antialias">抗锯齿</label>
         <select id="antialias" aria-describedby="antialias-hint">

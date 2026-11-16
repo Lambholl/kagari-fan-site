@@ -251,12 +251,13 @@ async function boot() {
   window.addEventListener('touchstart', () => ui.setTouchMode(), { passive: true, once: true });
 
   // ———————————————————— 尺寸 ————————————————————
+  let landscapeFov = 62;
   function resize() {
     const w = window.innerWidth;
     const h = window.innerHeight;
     camera.aspect = w / h;
-    // 竖屏时把视野放宽一些
-    camera.fov = w < h ? 76 : 62;
+    // 竖屏画面窄，竖直视场角比设置值多放宽 14°，左右才不至于太窄。
+    camera.fov = w < h ? landscapeFov + 14 : landscapeFov;
     camera.updateProjectionMatrix();
     const nextRatio = scenePixelRatio(w, h, window.devicePixelRatio || 1, compat);
     if (nextRatio !== pixelRatio) {
@@ -274,7 +275,13 @@ async function boot() {
     daisies.setProjection(projectionPixels);
   }
   window.addEventListener('resize', resize);
-  resize();
+  bindRangeSetting(ui.el.fov, 'kagari.fov', (degrees) => {
+    landscapeFov = degrees;
+    ui.setFovLabel(degrees);
+    resize();
+    // 视场角变了，历史帧与当前画面的投影对不上。
+    taa.reset();
+  });
 
   // 提前编译场景材质，避免首帧因同步编译卡住数秒；后期处理的着色器仍在首帧编译。
   await loadingStep('compile');

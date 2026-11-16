@@ -209,6 +209,24 @@ body:has(#title:not(.gone)) #corner {
   background: rgba(30, 60, 130, 0.6);
   border-color: rgba(191, 230, 255, 0.7);
 }
+#btn-fullscreen svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+#btn-fullscreen .icon-exit,
+#btn-fullscreen[aria-pressed="true"] .icon-enter {
+  display: none;
+}
+#btn-fullscreen[aria-pressed="true"] .icon-exit {
+  display: block;
+}
 #top-buttons button.off {
   color: rgba(191, 230, 255, 0.35);
   text-decoration: line-through;

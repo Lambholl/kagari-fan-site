@@ -58,6 +58,9 @@ export function createUI(timeline) {
     volumeValue: $('volume-value'),
     sensitivity: $('sensitivity'),
     sensitivityValue: $('sensitivity-value'),
+    fov: $('fov'),
+    fovValue: $('fov-value'),
+    fullscreen: $('btn-fullscreen'),
     antialias: $('antialias'),
     help: $('btn-help'),
     helpBox: $('help'),
@@ -179,12 +182,36 @@ export function createUI(timeline) {
     }
   }
 
+  // iPhone 上的 Safari 等不支持网页全屏，这时不显示全屏按钮。
+  const canFullscreen = Boolean(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  const fullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+  function syncFullscreen() {
+    const isFullscreen = Boolean(fullscreenElement());
+    el.fullscreen.setAttribute('aria-pressed', String(isFullscreen));
+    const label = isFullscreen ? '退出全屏' : '全屏';
+    el.fullscreen.title = label;
+    el.fullscreen.setAttribute('aria-label', label);
+  }
+  el.fullscreen.addEventListener('click', () => {
+    const root = document.documentElement;
+    const request = fullscreenElement()
+      ? (document.exitFullscreen || document.webkitExitFullscreen).call(document)
+      : (root.requestFullscreen || root.webkitRequestFullscreen).call(root, { navigationUI: 'hide' });
+    // 浏览器拒绝时（例如不是由点击触发）保持原状即可；旧版接口不返回 Promise。
+    Promise.resolve(request).catch(() => {});
+  });
+  document.addEventListener('fullscreenchange', syncFullscreen);
+  document.addEventListener('webkitfullscreenchange', syncFullscreen);
+
   let isTouch = false;
   function setTouchMode() {
     if (isTouch) return;
     isTouch = true;
     el.sit.hidden = false;
+    el.fullscreen.hidden = !canFullscreen;
   }
+  // 手机端标题画面就要能全屏，不必等到第一次触摸。
+  if (window.matchMedia('(pointer: coarse)').matches) el.fullscreen.hidden = !canFullscreen;
 
   // 右上角一次只展开一个面板，避免设置遮住操作说明。
   function showPanel(panel) {
@@ -297,6 +324,15 @@ export function createUI(timeline) {
     setSensitivityLabel(percentage) {
       el.sensitivity.setAttribute('aria-valuetext', `${percentage}%`);
       el.sensitivityValue.textContent = `${percentage}%`;
+    },
+    /**
+     * 显示视场角。
+     * @param {number} degrees - 滑条的值，横屏时的竖直视场角（度）。
+     * @returns {void}
+     */
+    setFovLabel(degrees) {
+      el.fov.setAttribute('aria-valuetext', `${degrees}°`);
+      el.fovValue.textContent = `${degrees}°`;
     },
     setTouchMode,
     get isTouch() {
