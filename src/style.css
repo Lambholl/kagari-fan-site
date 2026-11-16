@@ -182,7 +182,7 @@ kbd {
   gap: 8px;
   pointer-events: auto;
 }
-/* 只用半透明底色，字幕和按钮不再对实时 WebGL 画面做背景模糊。 */
+/* 仅使用纯半透明底色，省略 backdrop-filter 模糊以免拖慢实时 WebGL 画面合成。 */
 #top-buttons button {
   width: 36px;
   height: 36px;

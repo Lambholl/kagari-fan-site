@@ -5,16 +5,17 @@ import { SCENE_LAYOUT } from './world/scene-layout.js';
 
 // 剧情：Moon 线开头到「三杯咖啡」的一段，改写成可以亲自走一遍的小小流程。
 //
-// stage 0  陌生人：靠近就会被缎带斩杀（至少会“再收束”一次）
-// stage 1  被容许待在纸边 → 想到去泡咖啡
+// stage 0   陌生人：靠近或踩上纸面就会被缎带斩杀
+// stage 1   被容许待在纸边，准备下山泡咖啡
 // stage 2-4 第一、二、三杯咖啡
-// stage 5  被请进纸上；此后自由活动
+// stage 5   被请进纸上，此后自由活动
 
 const SPAWN = SCENE_LAYOUT.spawn;
 const RESPAWN = SCENE_LAYOUT.respawn;
 const FREE_SPAWN = SCENE_LAYOUT.freeSpawn;
 const linear = (k) => k;
 
+/** 创建剧情状态机与逐帧推进逻辑。 */
 export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items, audio, post, camera }) {
   const S = {
     mode: 'title',
@@ -59,7 +60,7 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
     ps.leanTarget = 0;
     S.busy = false;
   }
-  /** 把视线柔和地带向她（不强夺鼠标：只转一小段时间） */
+  /** 把视线柔和地带向她，只转向指定秒数而不接管后续鼠标控制。 */
   function faceKagari(seconds = 0.9, heightOffset = 0) {
     kagari.headWorld(v1);
     v1.y += heightOffset;
@@ -412,7 +413,7 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
       ps.x = x0 - (x0 / d) * pull * k;
       ps.z = z0 - (z0 / d) * pull * k;
     });
-    S.stage = 5; // 从这一刻起，纸不再是禁区
+    S.stage = 5; // 进入阶段 5，允许玩家踏上纸面
     await ui.say('脚尖，越过了她的领土。');
     await ui.say('——要被杀掉了吧。我做好了准备。', { hold: 1.5 });
     await tl.wait(1.2);
@@ -524,7 +525,7 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
           } else S.edgeTimer = 0;
         }
       } else if (S.stage < 5) {
-        // 被容许待在纸边；但纸仍是她的领土
+        // 阶段 1–4 允许停留在纸边，踩上纸面仍会触发死亡
         const near = dK < 7;
         S.alertT = near ? [0, 0.22, 0.14, 0.07, 0][S.stage] : 0;
         S.spikeT = dPaper < 0.35 ? 0.7 : 0;
@@ -576,7 +577,7 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
           }
         }
       } else {
-        // —— stage 5：自由 ——
+        // —— 阶段 5：自由活动 ——
         S.alertT = 0;
         S.spikeT = 0;
         audio.setTension(0);
@@ -597,7 +598,7 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
         if (S.glanceHold > 0) {
           S.glanceHold -= dt;
           kagari.setLook(1, 2.6);
-          kagari.setExpression('smile');
+          kagari.setExpression('stare');
         } else {
           kagari.setLook(0, 2.2);
           if (kagari.state.look < 0.08) kagari.setExpression('neutral');

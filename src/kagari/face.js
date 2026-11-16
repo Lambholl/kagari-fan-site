@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 
-// 脸画在一张等距柱状贴图上，直接包在头部球面上。
-// 贴图中心 u=0.25 对应正面（+z）。全部由 canvas 现画，不使用任何现成图像。
+// 脸部贴图以等距柱状投影绘制在 Canvas 上并贴合头部球面，中心 u = 0.25 对应正面（+z）。
 const W = 2048;
 const H = 1024;
 const px = (lonDeg) => W * (0.25 + lonDeg / 360);
@@ -55,7 +54,7 @@ function drawEye(ctx, cx, cy, mirror, soft, narrow) {
   tracePath(ctx, o);
   ctx.clip();
 
-  // 虹膜：几乎占满整个眼眶，上缘被上眼睑切掉；上深、下浅的紫，没有描边
+  // 虹膜占满眼眶大部分区域，上缘被上眼睑裁切，内部使用上深下浅的紫色渐变。
   const ix = 0.06 * w2;
   const iy = 0.1 * h2;
   const irx = 0.78 * w2;
@@ -173,9 +172,8 @@ function drawEye(ctx, cx, cy, mirror, soft, narrow) {
 }
 
 /**
- * @param {object} o
- * @param {number} o.soft   0 = 无表情，1 = 柔和的微笑
- * @param {number} o.narrow 0..1，眯起眼睛凝视
+ * 绘制整张面部贴图。
+ * soft：0 为无表情，1 为柔和微笑；narrow：0 到 1 表示眯眼凝视程度。
  */
 function drawFace({ soft = 0, narrow = 0 } = {}) {
   const c = document.createElement('canvas');
@@ -292,6 +290,7 @@ function drawFace({ soft = 0, narrow = 0 } = {}) {
   return tex;
 }
 
+/** 生成基础、凝视与微笑三套面部贴图。 */
 export function makeFaceTextures() {
   return {
     neutral: drawFace({ soft: 0, narrow: 0 }),

@@ -1,8 +1,9 @@
 /**
- * 修复几何体里长度为 0 或非有限的切线。
- * 着色器会对切线做 normalize，零向量得到 NaN；NaN 像素经泛光模糊会扩成大片黑块。
- * 只改坏掉的顶点：取与法线垂直的任意单位向量，其余顶点的切线保持原样。
- * @param {THREE.BufferGeometry} geometry 带 tangent 属性的几何体；没有该属性时不做任何事。
+ * 修复几何体中长度为 0 或非有限的顶点切线。
+ * 着色器会对切线做 normalize，零向量会产生 NaN，进而经泛光模糊扩散成大片黑块。
+ * 仅将异常顶点的切线替换为与法线垂直的单位向量，其余顶点保持不变。
+ *
+ * @param {THREE.BufferGeometry} geometry - 待检查的几何体，缺少 `tangent` 或 `normal` 属性时直接返回 0。
  * @returns {number} 被修复的顶点数。
  */
 export function repairTangents(geometry) {

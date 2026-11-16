@@ -3,11 +3,7 @@ import { mulberry32 } from '../util/noise.js';
 import { HILL_TOP, heightAt } from './terrain.js';
 import { MOON_DIR } from './sky.js';
 
-/**
- * 巨大用纸：照着事件 CG，只铺一张。比野餐垫大得多的一整张深蓝色纸。
- * 坐标以篝所在处为原点（世界 xz），rot 为绕 y 轴的旋转。
- * 她坐在纸的正中略偏南的位置，主角从南边上来时，离纸边大约两米。
- */
+/** 场景中巨大用纸的布局：中心与宽高单位为米，rot 为绕 Y 轴弧度。 */
 export const SHEETS = [{ name: 'core', cx: 0.35, cz: -0.85, w: 7.0, h: 6.0, rot: THREE.MathUtils.degToRad(12), core: true }];
 const CORE = SHEETS[0];
 
@@ -22,7 +18,7 @@ function toLocal(sheet, x, z, out) {
 }
 const _l = { x: 0, y: 0 };
 
-/** 这个世界坐标是否踩在纸上 */
+/** 这个世界水平坐标是否踩在纸上（margin 为向四边外扩的米数）。 */
 export function isOnPaper(x, z, margin = 0) {
   for (const sh of SHEETS) {
     toLocal(sh, x, z, _l);
@@ -31,7 +27,7 @@ export function isOnPaper(x, z, margin = 0) {
   return false;
 }
 
-/** 到纸张外缘的近似距离（在纸外为正） */
+/** 到纸张外缘的距离（米，纸外为正、纸内为负）。 */
 export function distanceToPaper(x, z) {
   let best = Infinity;
   for (const sh of SHEETS) {
@@ -389,11 +385,12 @@ const paperFragment = /* glsl */ `
   }
 `;
 
+/** 创建巨大用纸与飘浮光点；生命理论大图延迟 2.5 秒生成以免卡住开场。 */
 export function createPaper() {
   const group = new THREE.Group();
   group.name = 'paper';
   const trace = makeTraceTexture();
-  // 理论图很大，生成稍慢：开场后在空闲时画好，免得剧情里卡一下
+  // 延迟 2.5 秒生成大尺寸理论流程图纹理，避免阻塞首帧启动。
   let theory = null;
   setTimeout(() => {
     if (!theory) {
@@ -492,7 +489,7 @@ export function createPaper() {
           vAlpha = sin(t * 3.14159) * (1.0 - t * 0.5);
           vec4 mv = modelViewMatrix * vec4(p, 1.0);
           gl_Position = projectionMatrix * mv;
-          // 小光点按覆盖面积减淡，避免只落在一个随帧变化的采样点上。
+          // 将点尺寸下限钳制在 2.8 px 并按原投影面积比例缩放透明度，避免亚像素光点闪烁。
           float diameter = aMisc.z * uProj / max(-mv.z, 0.05);
           gl_PointSize = max(2.8, diameter);
           float coverage = diameter / gl_PointSize;
@@ -517,9 +514,9 @@ export function createPaper() {
 
   return {
     group,
-    /** 纸面最上层的高度 */
+    /** 纸面中心高度（米）。 */
     surfaceY: HILL_TOP + 0.02,
-    /** 屏幕高度（像素）/ (2·tan(fov/2))，用来换算光点的大小 */
+    /** 屏幕高度（像素）除以 2·tan(fov/2)，用于换算飘浮光点的屏幕大小。 */
     setProjection(v) {
       auraUniforms.uProj.value = v;
     },
@@ -529,7 +526,7 @@ export function createPaper() {
     setKagari(x, z) {
       mat.uniforms.uKagari.value.set(x, z);
     },
-    /** 0..1：让“生命的理论”浮现到纸面上 */
+    /** 0 到 1，让“生命的理论”浮现到纸面上。 */
     setTheory(v) {
       if (v > 0 && !theory) {
         theory = makeTheoryTexture();
@@ -537,7 +534,7 @@ export function createPaper() {
       }
       mat.uniforms.uTheoryAmt.value = v;
     },
-    /** 从篝的位置荡开一圈光 */
+    /** 从篝的位置荡开一圈光。 */
     ripple() {
       wave.r = 0;
       wave.strength = 1;

@@ -2,6 +2,7 @@
 
 const $ = (id) => document.getElementById(id);
 
+/** 创建负责字幕、提示、章节卡、黑场与设置面板的界面控制器。 */
 export function createUI(timeline) {
   const el = {
     title: $('title'),
@@ -40,11 +41,7 @@ export function createUI(timeline) {
   const queue = [];
   let queueRunning = false;
 
-  /**
-   * 显示一行字幕并等它读完。
-   * @param {string} text
-   * @param {{speaker?: string, hold?: number, glyph?: boolean}} [o]
-   */
+  /** 显示一行字幕并等它读完；hold 为停留秒数，glyph 启用抖动字效。 */
   async function say(text, o = {}) {
     const token = ++sayToken;
     saying = true;
@@ -191,7 +188,7 @@ export function createUI(timeline) {
     get busy() {
       return saying || queue.length > 0;
     },
-    /** 点击 / 空格：先补全打字，再翻到下一句 */
+    /** 点击或按空格时，先补全正在打印的文字，再跳过等待进入下一句。 */
     advance() {
       if (saying) skipRequested = true;
     },

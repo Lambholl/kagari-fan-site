@@ -12,3 +12,7 @@ Image credit: NASA Goddard Space Flight Center. Image by Reto Stöckli (land sur
 网页加载压缩后的 WebP，月轮着色器将它们处理成银白、灰蓝色。两张贴图保留南纬 67.5°到北极的范围，经度保持完整，供云层横向移动使用。
 
 球面以东经 75°、北纬 20°为可见面中心。理想潮汐锁定模型根据天空方向计算地球北轴的倾斜，采用固定自转相位，忽略具体日期的天平动。运行 `node scripts/calculate-earth-view.js` 检查朝向和贴图覆盖范围；朝向或渲染角半径改变后，应重新检查裁剪和 `uMapVMin`。
+
+# 天穹贴图
+
+- `sky-no-aurora-desktop.webp`（4096 × 1365）、`sky-no-aurora-mobile.webp`（2048 × 683）：从无极光夜空全景的 8K PNG 源图缩放后以质量 90 编码的 WebP 贴图，供天穹着色器映射地平线山峦轮廓，极光由前端着色器实时绘制。

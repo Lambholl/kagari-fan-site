@@ -1,9 +1,7 @@
 import { defineConfig } from 'vite';
-import { sceneAssets } from './scripts/scene-assets.js';
 
 export default defineConfig({
   base: './',
-  plugins: [sceneAssets()],
   server: {
     port: 5173,
     strictPort: false,

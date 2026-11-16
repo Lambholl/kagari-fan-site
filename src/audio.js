@@ -1,9 +1,9 @@
-// 全部用 WebAudio 现场合成：一层缓慢起伏的和声垫底，偶尔落下几粒八音盒般的音。
-// 不含任何录音或原作乐曲。
+// 全部用 Web Audio 现场合成：缓慢起伏的和声垫底，偶尔落下几粒八音盒般的音。
 
 const PENTA = [587.33, 698.46, 783.99, 880.0, 1046.5, 1174.66, 1396.91]; // D 小调五声
 const PAD = [146.83, 220.0, 293.66, 329.63, 440.0];
 
+/** 创建场景音频控制器，首次调用 init 后开始合成声音。 */
 export function createAudio() {
   let ctx = null;
   let master = null;
@@ -196,7 +196,7 @@ export function createAudio() {
       if (onPaper) noise({ dur: 0.09, type: 'highpass', f0: 2600, f1: 1800, gain: 0.035, q: 0.7 });
       else noise({ dur: 0.13, type: 'lowpass', f0: running ? 900 : 620, f1: 240, gain: 0.05, q: 0.5 });
     },
-    /** 缎带无风自起 */
+    /** 播放缎带无风自起时的环境风声。 */
     ribbonRise() {
       noise({ dur: 1.6, type: 'bandpass', f0: 500, f1: 2400, q: 2.5, gain: 0.07, attack: 0.5 });
     },
@@ -207,11 +207,11 @@ export function createAudio() {
       noise({ dur: 0.28, type: 'highpass', f0: 1500, f1: 7000, q: 0.8, gain: 0.4, attack: 0.004 });
       noise({ when: 0.06, dur: 0.6, type: 'lowpass', f0: 420, f1: 60, q: 1, gain: 0.5, attack: 0.01 });
     },
-    /** 被缎带“啪”地弹开 */
+    /** 播放缎带弹开保温瓶时的短促清脆声。 */
     flick() {
       noise({ dur: 0.07, type: 'bandpass', f0: 2200, f1: 900, q: 1.5, gain: 0.35, attack: 0.002 });
     },
-    /** “有力量的语言”：被压缩的信息，听起来只是一块噪声 */
+    /** 播放“有力量的语言”的高频调制噪声。 */
     glyph() {
       if (!ctx) return;
       const t = ctx.currentTime;
@@ -240,13 +240,13 @@ export function createAudio() {
     pour() {
       noise({ dur: 1.1, type: 'bandpass', f0: 900, f1: 1900, q: 6, gain: 0.07, attack: 0.15 });
     },
-    /** 她笑了 */
+    /** 播放篝微笑时的清亮音阶铃音。 */
     chime() {
       if (!ctx) return;
       const t = ctx.currentTime + 0.05;
       [587.33, 880.0, 1174.66, 1479.98, 1760.0].forEach((f, i) => bell(f, t + i * 0.16, 0.07, 4.5));
     },
-    /** 被请进纸上的那一刻 */
+    /** 播放玩家踏入纸面获得接纳时的和弦与光风声。 */
     open() {
       if (!ctx) return;
       const t = ctx.currentTime + 0.02;

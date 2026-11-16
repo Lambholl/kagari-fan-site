@@ -1,6 +1,7 @@
-// 由渲染循环驱动的小型时间轴：wait / tween 都返回 Promise，
+// 由渲染循环驱动的小型时间轴：wait 和 tween 都返回 Promise，
 // 这样剧情脚本可以写成一串 await，同时在标签页隐藏时自然暂停。
 
+/** 创建由渲染循环推进的时间轴控制器。 */
 export function createTimeline() {
   const tasks = new Set();
   return {
@@ -17,7 +18,7 @@ export function createTimeline() {
         tasks.add(task);
       });
     },
-    /** fn(k) 以 0..1 的进度被逐帧调用 */
+    /** fn(k, raw) 在指定秒数内按 0 到 1 的进度逐帧调用。 */
     tween(seconds, fn, ease = (k) => k * k * (3 - 2 * k)) {
       return new Promise((resolve) => {
         let t = 0;
@@ -33,7 +34,7 @@ export function createTimeline() {
         tasks.add(task);
       });
     },
-    /** 等到条件成立 */
+    /** 等到条件成立。 */
     until(pred) {
       return new Promise((resolve) => {
         const task = (dt) => {

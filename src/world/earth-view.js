@@ -4,8 +4,9 @@ import * as THREE from 'three';
  * 按理想潮汐锁定模型计算固定场景的地球朝向和观测角度。
  * 世界坐标以 +y 为天顶、-z 为月面真北，月球的地球直下点取经纬度 0°。
  * 球心正对东经 75°、北纬 20°，两颗天体的北轴夹角固定为 23.44°，忽略天平动。
- * @param {THREE.Vector3} direction 单位向量，y 分量须大于 0、小于 1。
- * @returns {{quaternion: THREE.Quaternion, longitudeDeg: number, latitudeDeg: number, rollDeg: number, lunarSiteLatitudeDeg: number, poleSeparationDeg: number}} 四元数将 SphereGeometry 的本地坐标转到世界坐标；角度字段均用度，rollDeg 从屏幕上方向右计量。
+ *
+ * @param {THREE.Vector3} direction - 单位向量，y 分量须大于 0 且小于 1。
+ * @returns {{quaternion: THREE.Quaternion, longitudeDeg: number, latitudeDeg: number, rollDeg: number, lunarSiteLatitudeDeg: number, poleSeparationDeg: number}} 四元数将 `SphereGeometry` 本地坐标转到世界坐标，角度字段单位为度，`rollDeg` 从屏幕上方向右计量。
  */
 export function calculateEarthView(direction) {
   const longitudeDeg = 75;

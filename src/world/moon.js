@@ -3,9 +3,10 @@ import { calculateEarthView } from './earth-view.js';
 
 /**
  * 加载本地地球贴图，创建银白色月轮并返回云层更新方法。
- * @param {number} radius 球体半径，使用场景的世界单位。
- * @param {THREE.Vector3} direction 单位方向，坐标约定及有效范围同 calculateEarthView。
- * @returns {{group: THREE.Group, update: (dt: number, lapse: number) => void}} update 接收秒数 dt 和 0 到 1 的时间加速系数 lapse。
+ *
+ * @param {number} radius - 球体半径（世界单位米）。
+ * @param {THREE.Vector3} direction - 单位方向，坐标约定及有效范围同 `calculateEarthView`。
+ * @returns {{group: THREE.Group, update: (dt: number, lapse: number) => void}} `update` 接收秒数 `dt` 与 `0` 到 `1` 的时间加速系数 `lapse`。
  */
 export function createMoon(radius, direction) {
   const group = new THREE.Group();
@@ -65,13 +66,13 @@ export function createMoon(radius, direction) {
         vec2 mapUv = vec2(vUv.x, (vUv.y - uMapVMin) / (1.0 - uMapVMin));
         vec3 land = texture2D(uSurface, mapUv).rgb;
         float luminance = dot(land, vec3(0.2126, 0.7152, 0.0722));
-        // 原背景采用银白色月面，海陆纹理只提供明暗细节。
+        // 用地球陆地亮度纹理调制银白色月面明暗，将色彩统一转为银灰阶。
         float terrain = smoothstep(0.025, 0.42, sqrt(luminance));
         float cloud = texture2D(uClouds, mapUv + vec2(uCloudOffset, 0.0)).r;
         cloud = smoothstep(0.12, 0.92, cloud);
         float value = mix(0.32, 0.82, terrain);
         value = mix(value, 0.90, cloud * 0.68);
-        // 原背景的上半部偏白，下缘保留灰蓝色的阴影。
+        // 提亮月面上半部并保留下缘的灰蓝阴影，增强球体明暗立体感。
         float upper = smoothstep(-0.15, 0.8, n.y);
         value = mix(value, 0.92, upper * 0.62);
         vec3 silver = mix(vec3(0.46, 0.62, 0.73), vec3(0.82, 0.91, 0.97), value);

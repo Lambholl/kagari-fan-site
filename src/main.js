@@ -67,7 +67,7 @@ const FinalShader = {
   `,
 };
 
-/** 泛光前清掉 NaN/Inf：单个坏像素经模糊会扩散成大片黑块。 */
+/** 清理泛光前的 NaN 与 Infinity 像素，防止单个坏像素经模糊扩散成大片黑块。 */
 const SanitizeShader = {
   uniforms: { tDiffuse: { value: null } },
   vertexShader: /* glsl */ `
@@ -93,7 +93,7 @@ async function boot() {
   const params = new URLSearchParams(location.search);
 
   // ———————————————————— 渲染器 ————————————————————
-  // Windows 上避免浏览器直接合成实时 WebGL 图层；原路径保留给开发排查。
+  // Windows 默认把 WebGL 帧复制到不透明二维画布以避开图层黑块，开发模式加 ?present=webgl 可直接显示 WebGL。
   const directWebGL = import.meta.env.DEV && params.get('present') === 'webgl';
   const compat = !directWebGL && navigator.platform.startsWith('Win');
   const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
@@ -143,7 +143,7 @@ async function boot() {
   const mobile = window.matchMedia('(pointer: coarse)').matches || window.innerWidth < 768;
   const [terrain, panorama] = await Promise.all([
     createTerrain({ mobile }),
-    new THREE.TextureLoader().loadAsync(`${import.meta.env.BASE_URL}scene-assets/sky-no-aurora-${mobile ? 'mobile' : 'desktop'}.jpg`),
+    new THREE.TextureLoader().loadAsync(`${import.meta.env.BASE_URL}textures/sky-no-aurora-${mobile ? 'mobile' : 'desktop'}.webp`),
   ]);
   const sky = createSky(panorama);
   const paper = createPaper();
@@ -157,7 +157,7 @@ async function boot() {
   const ribbons = createRibbons(kagari);
 
   // ———————————————————— 后期 ————————————————————
-  // 避免在半浮点色彩缓冲上做多重采样解析，改在输出阶段平滑边缘。
+  // 半浮点离屏目标不开启多重采样，改由后处理阶段平滑边缘。
   const composer = new EffectComposer(renderer);
   for (const target of [composer.renderTarget1, composer.renderTarget2]) {
     target.depthTexture = new THREE.DepthTexture(target.width, target.height, THREE.UnsignedIntType);
@@ -172,7 +172,7 @@ async function boot() {
   composer.addPass(bloom);
   const finalPass = new ShaderPass(FinalShader);
   composer.addPass(finalPass);
-  // 精细档仍采用单帧边缘检测，给不想用历史帧的玩家保留选择。
+  // 降低边缘检测阈值以捕捉暗夜场景中的细微轮廓。
   const smaa = new SMAAPass();
   smaa._materialEdges.defines.SMAA_THRESHOLD = '0.025';
   smaa.clear = true;
@@ -321,7 +321,6 @@ async function boot() {
       if (taa.enabled) taa.restoreCamera();
     }
     presentation.present();
-    if (import.meta.env.DEV) debug.afterFrame?.();
   }
 
   // 首帧渲染完再揭开黑幕
@@ -338,10 +337,6 @@ async function boot() {
 
   // 调试入口（控制台用）
   window.__kagari = { THREE, scene, camera, renderer, display, terrain, daisies, player, story, kagari, ribbons, paper, sky, items, post, ui, debug, bloom, tl, lights: { hemi, moonLight, handLight, paperLight } };
-  if (import.meta.env.DEV && params.has('inspect')) {
-    const { inspectScene } = await import('../tests/browser-scene.js');
-    inspectScene(window.__kagari, params.get('view'));
-  }
 }
 
 // 让“正在铺开夜色…”先画出来，再开始生成场景

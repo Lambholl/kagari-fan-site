@@ -4,15 +4,16 @@ import { createSurfaceSampler } from './surface.js';
 import { SCENE_LAYOUT } from './scene-layout.js';
 import { repairTangents } from './tangents.js';
 
+/** 世界原点处山顶地面的基准高度（米）。 */
 export const HILL_TOP = 14;
 let sampleGround;
 
-/** 当前可见地面的高度；必须在场景加载后调用。 */
+/** 当前可见地面的高度（米），须在场景加载后调用，网格外返回 NaN。 */
 export function heightAt(x, z) {
   return sampleGround(x, z)?.height ?? NaN;
 }
 
-/** 花只种在主平台的平地和缓坡上，悬崖及外围林地不种花。 */
+/** 返回可种花的主平台平地或缓坡信息，悬崖、外围林地和树根附近返回 null。 */
 export function flowerSurfaceAt(x, z) {
   const surface = sampleGround(x, z);
   if (!surface || !surface.plateau || surface.normalY < 0.9) return null;
@@ -20,7 +21,7 @@ export function flowerSurfaceAt(x, z) {
   return surface;
 }
 
-/** 检查每一步的高度差和坡度，阻止跨越崖沿，并允许沿崖边滑动。 */
+/** 检查一步移动是否符合地面坡度、高度差及主树避让约束，须在场景加载后调用。 */
 export function canWalkTo(x, z, fromX, fromZ) {
   const surface = sampleGround(x, z);
   if (!surface || surface.normalY < 0.78) return false;
@@ -29,36 +30,36 @@ export function canWalkTo(x, z, fromX, fromZ) {
   return Math.hypot(x - SCENE_LAYOUT.tree.x, z - SCENE_LAYOUT.tree.z) >= SCENE_LAYOUT.tree.radius;
 }
 
-/** 加载本地缓坡场景。主平台、外围地形、主树和树林保留各自的网格。 */
+/** 加载地形、主树与远景树林模型，并初始化地面高度采样器。 */
 export async function createTerrain({ mobile = false } = {}) {
   const quality = mobile ? 'mobile' : 'desktop';
   const loader = new GLTFLoader();
-  const load = async (name) => (await loader.loadAsync(`${import.meta.env.BASE_URL}scene-assets/${name}.glb`)).scene;
+  const load = async (name) => (await loader.loadAsync(`${import.meta.env.BASE_URL}models/${name}.glb`)).scene;
   const [ground, tree, forest] = await Promise.all([
-    load(`ground-${quality}`), load(`tree-game-${quality}`),
-    load(`forest-${quality}`),
+    load('ground-desktop'), load(`tree-game-${quality}`),
+    load('forest-desktop'),
   ]);
   const group = new THREE.Group();
   group.name = 'terrain';
   group.rotation.y = SCENE_LAYOUT.yaw;
   group.position.set(SCENE_LAYOUT.offsetX, HILL_TOP, SCENE_LAYOUT.offsetZ);
-  // 主树已在 Blender 中应用场景比例，只缩放地形和外围树林。
+  // 主树导出时已应用场景比例，这里只缩放地形与外围树林。
   const landscape = new THREE.Group();
   landscape.scale.setScalar(SCENE_LAYOUT.scale);
   landscape.add(ground, forest);
   group.add(landscape, tree);
   group.updateMatrixWorld(true);
   const originalSampler = createSurfaceSampler(ground);
-  // 篝仍以世界原点为交互中心，整套场景只做一次统一平移与旋转。
+  // 平移整套场景，使世界原点处的地面落在预设山顶高度。
   group.position.y += HILL_TOP - originalSampler(0, 0).height;
   group.updateMatrixWorld(true);
   sampleGround = createSurfaceSampler(ground);
 
-  // 主树使用 Blender 中简化并导出的模型，游戏端不更改其网格或材质。
+  // 开启主树阴影投射，并修复导出树皮中的零长度切线。
   tree.traverse((mesh) => {
     if (!mesh.isMesh) return;
     mesh.castShadow = true;
-    // 导出的树皮有零长度切线，着色时会算出 NaN 并被泛光扩成黑块；这里只修坏掉的顶点。
+    // 树皮存在零长度切线，着色器归一化时会算出 NaN 并被泛光扩成黑块。
     repairTangents(mesh.geometry);
   });
   ground.traverse((mesh) => {

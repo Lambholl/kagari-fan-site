@@ -64,6 +64,7 @@ const POSES = {
   drink: { p: [0.02, -0.1, -0.3], r: [0.95, 0, 0] },
 };
 
+/** 创建主角手里的保温瓶和纯白内杯，以及递交给她时使用的独立杯体。 */
 export function createItems(camera, scene) {
   const steamTex = makeSteamTexture();
   const view = new THREE.Group();
@@ -85,7 +86,7 @@ export function createItems(camera, scene) {
   view.add(cup);
   cup.position.fromArray(POSES.hidden.p);
 
-  // 交到她手里时用的“世界里的杯子”
+  // 递给篝时在世界坐标系中独立移动的杯子实例
   const worldCup = makeCup(steamTex);
   worldCup.visible = false;
   scene.add(worldCup);
@@ -108,7 +109,7 @@ export function createItems(camera, scene) {
       cup.userData.full = v;
       worldCup.userData.full = v;
     },
-    /** 保温瓶被缎带弹开时的一抖 */
+    /** 触发保温瓶被缎带弹开时的偏转抖动。 */
     jolt() {
       st.jolt = 1;
     },

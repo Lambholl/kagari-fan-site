@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32, smoothstep, clamp, lerp } from '../util/noise.js';
 
-// 头发在“头部局部坐标”里搭建：原点 = 头部中心，+z = 脸的正面，+y = 头顶。
+// 头发在头部局部坐标系中搭建：原点为头部中心，+z 为正面，+y 为头顶。
+/** 程序化头部碰撞球体参考半径（米）。 */
 export const HEAD_R = 0.105;
 const HC = new THREE.Vector3(0, 0.012, -0.006); // 发壳中心：比头略靠上靠后，后脑勺更蓬
 const HR = 0.121;
@@ -183,19 +184,19 @@ function ahogeGeometry() {
   return geo;
 }
 
-/** 发饰所在位置（头部局部坐标），side = +1 为她的左侧（+x） */
+/** 发饰挂点（头部局部坐标），side 为 1 表示她的左侧（+x）。 */
 export function clipAnchor(side, out = new THREE.Vector3()) {
   return shell(96 * D2R, side * 80 * D2R, 0.011, 0.06, out);
 }
 
+/** 合并底发、呆毛与各层发束，生成完整的头发几何体。 */
 export function buildHairGeometry() {
   const rand = mulberry32(1203);
   const jit = (v) => (rand() - 0.5) * v;
   const parts = [capGeometry(), ahogeGeometry()];
   const add = (o) => parts.push(strandGeometry(o));
 
-  // 参考成品模型的做法：头发不是一根根细管，而是少数几大片宽而扁、彼此叠压的发束，
-  // 每片在末端收成尖，靠描边勾出发束的分界。
+  // 头发由少数宽而扁、彼此叠压的发束组成，末端收尖以配合外轮廓描边。
 
   // —— 刘海：盖住眉毛，垂到眼睛上缘；中间一束最长，落在两眼之间 ——
   const bangs = [

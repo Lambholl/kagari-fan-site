@@ -48,10 +48,7 @@ function makeCloudTexture(seed) {
   return tex;
 }
 
-/**
- * 创建夜空、星点、月轮和地平线云，返回场景节点与更新方法。
- * @returns {object} group 为天空节点，moon 为月轮节点。
- */
+/** 创建夜空、星点、月轮和地平线云，返回场景节点与更新接口。 */
 export function createSky(panorama) {
   const group = new THREE.Group();
   group.name = 'sky';
@@ -202,7 +199,7 @@ export function createSky(panorama) {
       group.position.copy(camera.position);
       moon.position.copy(MOON_DIR).multiplyScalar(SKY_R * 0.9);
       lunar.update(dt, state.lapse);
-      // 平时星点保持固定，仅在剧情的时间加速段旋转星空。
+      // 极光与地平线云持续微动，星空只在剧情时间加速时旋转。
       dome.material.uniforms.uAuroraTime.value += dt * (1 + state.lapse * 5);
       state.starAngle += dt * state.lapse * 0.9;
       state.cloudAngle += dt * (0.0006 + state.lapse * 0.35);

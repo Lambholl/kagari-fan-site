@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 
-/** 将地面三角形按水平位置分格，供行走和花朵共用同一份精确高度。 */
+/**
+ * 按水平方格索引朝上的地形三角面，返回查询 (x, z) 最高可见表面高度与法线的函数。
+ * plateauOnly 为 true 时仅匹配主平台表面，网格外返回 null。
+ */
 export function createSurfaceSampler(root, cellSize = 4) {
   const cells = new Map();
   const a = new THREE.Vector3();

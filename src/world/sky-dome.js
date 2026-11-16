@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-/** 远山贴图仍按原来的地平线投影，天顶由封闭的球面连续绘制。 */
+/** 创建封闭球面天穹，将全景山峦贴图平滑过渡到天顶夜色，并绘制极光与月晕。 */
 export function createSkyDome(panorama, radius, moonDir, moonRadius) {
   panorama.colorSpace = THREE.SRGBColorSpace;
   panorama.wrapS = THREE.RepeatWrapping;
@@ -56,7 +56,7 @@ export function createSkyDome(panorama, radius, moonDir, moonRadius) {
 
       void main() {
         vec3 d = normalize(vDir);
-        // 原远景圆筒半径 200、高 420。按仰角找纹理高度，并在上沿前淡出。
+        // 全景纹理按半径 200、高度 420 的圆柱投影制作，按俯仰角换算纹理 V 坐标并在高空淡出为夜空天顶色。
         float skyV = clamp((149.65 + 200.0 * d.y / max(length(d.xz), 0.2)) / 420.0, 0.0, 1.0);
         vec3 hills = texture2D(uPanorama, vec2(vU - 0.183, skyV)).rgb * 0.38;
         vec3 zenith = vec3(0.0028, 0.0085, 0.032);

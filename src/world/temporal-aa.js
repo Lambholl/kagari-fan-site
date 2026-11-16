@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 
-// 八个分散在一个像素内的采样点，以像素中心为平均位置。
+/** 8 个零均值像素内亚像素抖动偏移（单位为像素），按像素中心对称分布。 */
 export const TEMPORAL_SAMPLES = [
   [-7, 1], [3, -7], [7, 7], [-1, -3], [1, 5], [-5, -5], [5, -1], [-3, 3],
 ].map(([x, y]) => [x / 16, y / 16]);
@@ -53,7 +53,7 @@ const fragmentShader = /* glsl */ `
       if (oldClip.w > 0.0) {
         vec2 oldUv = oldClip.xy / oldClip.w * 0.5 + 0.5;
         if (all(greaterThanEqual(oldUv, uPixel * 0.5)) && all(lessThanEqual(oldUv, 1.0 - uPixel * 0.5))) {
-          // 深度用最近的像素比较，不能把前景和背景的深度混在一起。
+          // 读取最近像素中心处的历史深度，避免双线性插值混合前景与背景深度。
           vec2 oldPixel = (floor(oldUv / uPixel) + 0.5) * uPixel;
           float oldDepth = texture2D(uHistory, oldPixel).a;
           bool matches = sky ? oldDepth == 0.0 :
@@ -77,7 +77,7 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
-/** 重投影上一帧，稳定细枝、花茎和纸边的像素覆盖。 */
+/** 时序抗锯齿通道：用亚像素抖动和深度重投影稳定细枝、花茎与纸边。 */
 export class TemporalAAPass extends Pass {
   constructor(camera) {
     super();
@@ -112,12 +112,14 @@ export class TemporalAAPass extends Pass {
     this.reset();
   }
 
+  /** 清空历史帧积累并重置采样索引。 */
   reset() {
     this.uniforms.uHasHistory.value = false;
     this.sample = 0;
     this.latest = 0;
   }
 
+  /** 调整双缓冲历史纹理尺寸并清空历史。 */
   setSize(width, height) {
     width = Math.floor(width);
     height = Math.floor(height);
@@ -127,6 +129,7 @@ export class TemporalAAPass extends Pass {
     this.reset();
   }
 
+  /** 在场景渲染前应用当前帧的像素内偏移；镜头大幅跳变时自动清空历史。 */
   jitterCamera() {
     const { camera, uniforms } = this;
     if (this.lastPosition.distanceToSquared(camera.position) > 9 ||
@@ -144,11 +147,13 @@ export class TemporalAAPass extends Pass {
     camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
   }
 
+  /** 在场景渲染后恢复未偏移的相机投影矩阵。 */
   restoreCamera() {
     this.camera.projectionMatrix.copy(this.savedProjection);
     this.camera.projectionMatrixInverse.copy(this.savedProjection).invert();
   }
 
+  /** 执行历史帧重投影并写入输出缓冲。 */
   render(renderer, writeBuffer, readBuffer) {
     const history = this.frames[this.latest];
     const output = this.frames[1 - this.latest];
@@ -168,6 +173,7 @@ export class TemporalAAPass extends Pass {
     this.uniforms.uHasHistory.value = true;
   }
 
+  /** 释放渲染目标、着色器材质与全屏四边形资源。 */
   dispose() {
     for (const target of this.frames) target.dispose();
     this.resolve.dispose();

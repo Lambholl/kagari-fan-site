@@ -155,6 +155,7 @@ function makeDistantBloom(source, uniforms, color) {
   return bloom;
 }
 
+/** 在台顶平地与缓坡上分布黑白雏菊，远景过渡为软边圆盘以稳定画面亮度。 */
 export function createDaisies() {
   const group = new THREE.Group();
   group.name = 'daisies';
@@ -235,7 +236,7 @@ export function createDaisies() {
     setProjection(pixels) {
       uniforms.uFlowerProjection.value = pixels;
     },
-    /** 开发对照：0 为原网格，1 为旧远景过滤，2 为当前分级过滤。 */
+    /** 开发对照模式：0 只画完整网格，1 按像素半径渐隐，2 结合俯仰角平滑过渡。 */
     setCoverageProfile(profile) {
       uniforms.uFlowerProfile.value = profile;
       for (const bloom of blooms) bloom.renderOrder = profile === 2 ? -1 : 1;

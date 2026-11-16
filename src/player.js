@@ -3,7 +3,7 @@ import { clamp, damp } from './util/noise.js';
 import { heightAt, canWalkTo } from './world/terrain.js';
 import { SCENE_LAYOUT } from './world/scene-layout.js';
 
-// 主角（瑚太朗）的第一人称控制：WASD / 方向键行走，鼠标环视；触屏有虚拟摇杆。
+// 主角（瑚太朗）的第一人称控制：WASD 或方向键行走，鼠标环视；触屏有虚拟摇杆。
 
 const EYE_STAND = 1.66;
 const EYE_SIT = 0.98;
@@ -13,6 +13,7 @@ const WORLD_R = 170;
 // 不能走进她和铺开的裙摆里（圆心略偏向她身后）
 const BLOCK = { x: 0.25, z: -0.14, r: 1.08 };
 
+/** 创建第一人称玩家控制器，同步相机视角和影子替身位置。 */
 export function createPlayer({ camera, dom, hooks = {} }) {
   const st = {
     x: SCENE_LAYOUT.spawn.x,
@@ -85,7 +86,7 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     if (e.button !== 0) return;
     if (document.pointerLockElement !== dom) {
       dragging = true;
-      // 指针锁定可能被环境拒绝；失败时退回“按住拖动环视”
+      // 指针锁定可能被环境拒绝；失败时退回按住拖动环视
       try {
         const p = dom.requestPointerLock?.();
         if (p && p.catch) p.catch(() => {});
@@ -213,7 +214,7 @@ export function createPlayer({ camera, dom, hooks = {} }) {
       nz *= WORLD_R / r;
       hooks.onBoundary?.();
     }
-    // 新场景有陡崖，不能再只靠圆形边界限制行走。
+    // 遇陡崖阻挡时，尝试沿单个坐标轴滑动。
     if (!canWalkTo(nx, nz, st.x, st.z)) {
       if (canWalkTo(nx, st.z, st.x, st.z)) nz = st.z;
       else if (canWalkTo(st.x, nz, st.x, st.z)) nx = st.x;
@@ -259,7 +260,7 @@ export function createPlayer({ camera, dom, hooks = {} }) {
       st.roll = 0;
       vel.set(0, 0);
     },
-    /** 面向某个世界坐标所需的 yaw / pitch */
+    /** 面向某个世界坐标所需的 yaw 和 pitch（弧度）。 */
     aimAt(target, out = {}) {
       const dx = target.x - camera.position.x;
       const dy = target.y - camera.position.y;
