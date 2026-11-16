@@ -226,7 +226,7 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
   }
 
   // ———————————————————— 彩蛋：摔死与撞树 ————————————————————
-  // 与缎带斩杀分开计数：不推进剧情，也不触发第一次死亡的那段独白。
+  // 与缎带斩杀分开计数，剧情阶段保持不变，第一次死亡的那段独白只留给缎带斩杀。
   // 每种死法第一次播放完整独白，之后轮流播放短独白。
   const MISHAPS = {
     fall: {
@@ -264,11 +264,12 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
   const mishapCounts = { fall: 0, tree: 0 };
 
   /**
-   * 摔死或撞树后躺倒在地时调用；kind 为 MISHAPS 的键。独白结束后回到出生点。
+   * 播放摔死或撞树后的倒地演出和独白，结束后送回出生点。
+   * @param {keyof typeof MISHAPS} kind - 死法。
    */
   async function mishapDeath(kind) {
     if (S.mode !== 'play') return;
-    // 其他场景正在进行时不叠加独白，直接送回出生点，免得一直躺着动不了。
+    // 其他场景正在进行时跳过独白直接送回出生点，免得一直躺着动不了。
     if (S.busy) {
       player.teleport(SPAWN.x, SPAWN.z, SPAWN.yaw, SPAWN.pitch);
       return;
@@ -552,7 +553,8 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
       const onPaper = isOnPaper(ps.x, ps.z);
       const dPaper = distanceToPaper(ps.x, ps.z);
       const canSee = kagari.state.canSee;
-      const atEdge = !onPaper && dK < 3.1 && canSee;
+      // 纸边按到纸张外缘的距离算，四条边一视同仁。纸是 7×6 米的斜放矩形，篝偏离中心，她到四边的距离在 2.2 至 4 米之间。
+      const atEdge = !onPaper && dPaper < 0.9 && canSee;
       let prompt = null;
       let handler = null;
       S.shareCooldown = Math.max(0, S.shareCooldown - dt);
@@ -581,11 +583,13 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
         const base = S.deaths === 0 ? 1 : 0.7;
         S.alertT = S.alertOn ? base : 0;
         audio.setTension(S.alertOn ? (S.deaths === 0 ? 0.6 : 0.25) : 0);
-        kagari.setLook(dK < 8.5 ? 1 : 0, 3);
+        // 先起缎带（11 米），再走近到 7 米她才抬头看过来；两段隔开几米，缎带完全浮起后才对上视线。
+        kagari.setLook(dK < 7 ? 1 : 0, 3);
 
         if (S.deaths === 0) {
+          // 主角踩上纸面时斩击。靠近篝的一侧纸边离她只有 2.2 米，主角可以站在纸边近距离看她。
           if (dK < 6.4 && once('glyph')) seqGlyph();
-          else if (dK < 4.3 || onPaper) die();
+          else if (onPaper) die();
           if (S.once.has('glyph') && !S.busy) S.spikeT = dK < 8 ? 1 : 0;
         } else {
           S.spikeT = dPaper < 0.5 ? 0.8 : 0;
@@ -704,14 +708,14 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
       ui.narrate(['再往前，就不是“今夜”所在的地方了。']);
     },
     /**
-     * 玩家走出崖边、落到崖下地面时调用，播放摔死的独白后送回出生点。
+     * 处理玩家摔死：播放倒地演出和独白，之后送回出生点。
      * @returns {void}
      */
     onFall() {
       mishapDeath('fall');
     },
     /**
-     * 玩家奔跑时正面撞上主树后调用，播放撞死的独白后送回出生点。
+     * 处理玩家撞树而死：播放倒地演出和独白，之后送回出生点。
      * @returns {void}
      */
     onTreeCrash() {

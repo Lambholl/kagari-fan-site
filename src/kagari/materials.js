@@ -7,7 +7,8 @@ export const CHARACTER_PROFILES = {
   hair: { shade: 0x8598bb, lit: 0xc1d3e7, shift: -0.12, softness: 0.2, textureGamma: 1, specular: 0.065, rim: 0.035 },
   cloth: { shade: 0x7e8da9, lit: 0x9ab9dd, shift: -0.06, softness: 0.22, textureGamma: 0.82, specular: 0.012, rim: 0.015 },
   frill: { shade: 0xa0adc2, lit: 0xd7dfeb, shift: -0.1, softness: 0.28, textureGamma: 1, specular: 0.01, rim: 0 },
-  ribbon: { shade: 0x9d9dc1, lit: 0xd8c5e2, shift: -0.1, softness: 0.26, textureGamma: 1, specular: 0.025, rim: 0.008 },
+  // 模型手腕上缠的缎带与垂下的长缎带共用；亮暗部取偏暖的中性灰，乘上缎带的红色后保持原色。
+  ribbon: { shade: 0xa89a98, lit: 0xeadcd8, shift: -0.1, softness: 0.26, textureGamma: 1, specular: 0.025, rim: 0.008 },
 };
 
 const characterLighting = /* glsl */ `
@@ -164,6 +165,6 @@ export const COLORS = {
   frill: 0xe8eef8,
   tights: 0x16242e,
   black: 0x0b0b14,
-  ribbonA: new THREE.Color(0.42, 0.2, 0.86), // 紫
-  ribbonB: new THREE.Color(0.9, 0.22, 0.52), // 洋红
+  ribbonA: new THREE.Color(0.5, 0.03, 0.06), // 暗红
+  ribbonB: new THREE.Color(0.92, 0.12, 0.1), // 朱红
 };

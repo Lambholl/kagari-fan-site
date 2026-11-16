@@ -188,7 +188,7 @@ export function createDaisies() {
   const e = new THREE.Euler();
   const s = new THREE.Vector3();
   const p = new THREE.Vector3();
-  // 在 (x, z) 处尝试种一朵花，种下返回 true；纸面、崖壁和树根附近不种。
+  // 在 (x, z) 处尝试种一朵花，种下返回 true；跳过纸面、崖壁和树根附近。
   // 实际概率为 density 乘以 0.3 至 1.5 的成片疏密系数。
   function plant(x, z, density) {
     // 给花瓣、茎的倾斜和摇摆留出空隙，避免纸边的花伸进纸面。
@@ -231,7 +231,7 @@ export function createDaisies() {
     const z = Math.sin(ang) * r;
     // 主角上山的南坡开得最盛
     const south = 0.55 + 0.45 * smoothstep(-0.4, 0.5, z / (r + 1e-3));
-    // 外圈逐渐稀疏到 0，花海按距离淡出，而不是停在主平台模型的边缘或采样半径上。
+    // 外圈按距离逐渐稀疏，到采样半径 RMAX 时正好降到 0，主平台模型边缘处的密度保持连续。
     const fade = (1 - 0.6 * smoothstep(28, RMAX, r)) * (1 - smoothstep(RMAX * 0.64, RMAX, r));
     if (plant(x, z, fade * south)) planted++;
   }

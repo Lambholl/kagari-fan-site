@@ -20,7 +20,7 @@ const ZOOM_MAX = 8;
 // 滚轮每格（约 100 像素）倍率变化 2 的 1/4 次方，从 2 倍到 8 倍滚 8 格。
 const ZOOM_WHEEL_PIXELS_PER_OCTAVE = 400;
 // 走出崖边后腾空下落；落地处比起跳点低出 FALL_LETHAL 米就算摔死，交给剧情处理。
-// 4 米远高于行走允许的台阶高度，走下普通的小坎只会落地，不会摔死。
+// 4 米远高于行走允许的台阶高度，走下普通的小坎只会落地。
 const GRAVITY = 9.8;
 const FALL_LETHAL = 4;
 // 脚下一直没有地面（掉出地形网格）时，下落这么多米后同样算摔死，免得一直往下掉。
@@ -105,13 +105,13 @@ export function createPlayer({ camera, dom, hooks = {} }) {
   }
   function onWheel(e) {
     if (zoomTarget === 1) return;
-    // 放大时滚轮只调倍率，不让页面滚动。
+    // 放大时滚轮只调倍率，并阻止页面滚动。
     e.preventDefault();
     const pixels = e.deltaY * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? window.innerHeight : 1);
     zoomTarget = clamp(zoomTarget * 2 ** (-pixels / ZOOM_WHEEL_PIXELS_PER_OCTAVE), ZOOM_MIN, ZOOM_MAX);
   }
   function rotate(dx, dy, sens) {
-    // 躺倒在地上时视线交给剧情，鼠标和触屏都不能转动。
+    // 躺倒在地上时视线由剧情控制，忽略鼠标和触屏的转动。
     if (st.downed) return;
     // 放大后同样的鼠标位移按倍率缩小转角，准星在画面上移动的速度与不放大时一致。
     const turn = sens * lookSensitivity / st.zoom;
@@ -354,7 +354,7 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     st.eye = damp(st.eye, st.downed ? EYE_DOWN : st.sitting ? EYE_SIT : EYE_STAND, 5, dt);
     st.lean = damp(st.lean, st.leanTarget, 4, dt);
     const prevBob = st.bob;
-    // 腾空时没有脚步和起伏。
+    // 腾空时停住脚步声和视线起伏。
     if (!st.airborne) st.bob += moved * 1.75;
     if (Math.floor(prevBob / Math.PI) !== Math.floor(st.bob / Math.PI) && moved > 0) hooks.onStep?.(st.x, st.z, running);
     const bobAmt = st.airborne ? 0 : Math.min(1, st.speed / WALK);

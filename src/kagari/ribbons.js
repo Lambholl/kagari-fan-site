@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { COLORS, characterToon } from './materials.js';
 import { skirtPoint } from './kagari.js';
-import { clamp, lerp, smoothstep, damp } from '../util/noise.js';
+import { clamp, lerp, smoothstep, damp, makeNoise2D, fbm, mulberry32 } from '../util/noise.js';
 
 // 缎带：平时搭在裙摆与纸面上，有人靠近时浮起，逼近则倒竖化作利刃（在篝局部坐标中计算）。
 
@@ -90,6 +90,10 @@ const _n = new THREE.Vector3();
 const _prev = new THREE.Vector3();
 const _x = new THREE.Vector3(1, 0, 0);
 
+// 飘动用的不规则波形，取值约 -1 至 1。x 沿缎带随时间平移，波从根部传向末端；y 缓慢推进，波形本身也在变。
+// 值噪声叠两层，起伏的间隔和高低随位置和时间随机变化。
+const wave = (noise, x, y) => fbm(noise, x, y, 2) * 2 - 1;
+
 function sampleCurve(pts, n) {
   const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
   return curve.getSpacedPoints(n);
@@ -101,7 +105,7 @@ export function createRibbons(kagari) {
   group.name = 'ribbons';
   kagari.group.add(group);
 
-  const purpleMat = characterToon(0xffffff, 'ribbon', {
+  const ribbonMat = characterToon(0xffffff, 'ribbon', {
     vertexColors: true,
     side: THREE.DoubleSide,
   });
@@ -125,11 +129,11 @@ export function createRibbons(kagari) {
   }
   bridgePts.push(nearHand('R', V(-0.4, 0.016, 0.3), 0.5), nearHand('R', V(-0.21, 0.016, 0.46)), WR.clone());
   const bridge = {
-    strip: new Strip(150, purpleMat),
+    strip: new Strip(150, ribbonMat),
     calm: null,
     kind: 'bridge',
-    phase: 0.7,
     delay: 0.0,
+    noise: makeNoise2D(311),
   };
   bridge.calm = sampleCurve(bridgePts, bridge.strip.n);
   // 将曲线采样点钳制到实际裙面高度之上，避免插值中段穿过布面。
@@ -152,13 +156,19 @@ export function createRibbons(kagari) {
     { side: 'R', y: 0.028, pts: [[-0.08, 0.47], [-0.15, 0.55], [-0.07, 0.62]], yaw: -0.3, h: 1.45, len: 1.1, phase: 4.0, delay: 0.05 },
     { side: 'R', y: 0.018, pts: [[-0.13, 0.37], [-0.26, 0.31], [-0.36, 0.22]], yaw: -1.0, h: 0.95, len: 1.3, phase: 5.3, delay: 0.3 },
   ];
-  const tails = tailDefs.map((d) => {
+  // 每条长尾各有一套噪声和节奏（0.8 至 1.25 倍），各自独立摆动。
+  const tempoRand = mulberry32(7741);
+  const tails = tailDefs.map((d, i) => {
     const w0 = d.side === 'L' ? WL : WR;
     const pts = [w0.clone(), ...d.pts.map(([x, z]) => nearHand(d.side, V(x, d.y, z)))];
-    const strip = new Strip(72, purpleMat);
+    const strip = new Strip(72, ribbonMat);
     strip.setColors((s, c) => c.copy(A).lerp(B, smoothstep(0.0, 0.55, s)).lerp(A, smoothstep(0.7, 1.0, s) * 0.6));
-    return { ...d, strip, calm: restOnCloth(sampleCurve(pts, strip.n)), kind: 'tail', rest: w0 };
+    const noise = makeNoise2D(521 + i * 97);
+    const tempo = lerp(0.8, 1.25, tempoRand());
+    return { ...d, strip, calm: restOnCloth(sampleCurve(pts, strip.n)), kind: 'tail', rest: w0, noise, tempo };
   });
+  // 所有缎带共用的阵风强度，约 0.6 至 1.4 倍，缓慢起伏。
+  const gustNoise = makeNoise2D(97);
 
   for (const r of [bridge, ...tails]) group.add(r.strip.mesh);
 
@@ -184,10 +194,13 @@ export function createRibbons(kagari) {
     dirP.set(target.x, 0, target.z);
     if (dirP.lengthSq() < 1e-4) dirP.set(0, 0, 1);
     dirP.normalize();
+    const gust = 0.6 + 0.8 * fbm(gustNoise, time * 0.25, 0.5, 2);
+    // 倒竖成刃时变得僵直，飘动幅度减到四成。
+    const flutter = gust * (1 - 0.6 * st.spike);
 
     // 连接两只手腕的环状缎带
     {
-      const { strip, calm } = bridge;
+      const { strip, calm, noise } = bridge;
       const a = smoothstep(0, 1, clamp(st.alert * 1.15, 0, 1));
       kagari.wristLocal('L', wrist);
       const dl = off.subVectors(wrist, WL).clone();
@@ -200,38 +213,48 @@ export function createRibbons(kagari) {
         if (a > 0.001) {
           const arch = Math.pow(Math.sin(Math.PI * u), 0.8);
           const r = Math.hypot(p.x, p.z) || 1;
-          p.y += a * arch * (0.95 + 0.22 * Math.sin(time * 0.7 + u * 5.0));
-          p.x += a * arch * ((p.x / r) * 0.22 + 0.1 * Math.sin(time * 0.9 + u * 9.0));
-          p.z += a * arch * ((p.z / r) * 0.22 + 0.1 * Math.cos(time * 0.8 + u * 7.0));
+          // 三个方向各取一路噪声，沿环向两侧以不同速度传播。
+          p.y += a * arch * (0.95 + 0.33 * flutter * wave(noise, u * 1.6 - time * 0.22, 1.7 + time * 0.04));
+          p.x += a * arch * ((p.x / r) * 0.22 + 0.16 * flutter * wave(noise, u * 2.9 - time * 0.29, 5.3 + time * 0.05));
+          p.z += a * arch * ((p.z / r) * 0.22 + 0.16 * flutter * wave(noise, u * 2.3 + time * 0.26, 9.1 + time * 0.05));
         }
       }
+      // 倒竖时收窄绷紧，宽度沿长度连续变化。相邻顶点只隔约 1.5 厘米，逐顶点交替宽窄会连成一格格方块状的锯齿。
       const sp2 = st.spike;
       strip.rebuild(
-        (u, i) => 0.036 * (1 + sp2 * (i % 2 ? 1.3 : -0.45)),
-        (u) => a * (Math.sin(u * 9 + time * 0.6) * 0.9),
+        () => 0.036 * (1 - 0.4 * sp2),
+        (u) => a * 1.4 * flutter * wave(noise, u * 2.9 - time * 0.19, 12.5 + time * 0.03),
       );
     }
 
     // 从腕结下垂的四条长尾缎带
     for (const r of tails) {
-      const { strip, calm } = r;
+      const { strip, calm, noise } = r;
       const a = smoothstep(0, 1, clamp(st.alert * 1.4 - r.delay, 0, 1));
       kagari.wristLocal(r.side, wrist);
       off.subVectors(wrist, r.rest);
+      const tt = time * r.tempo;
+      // 整条缎带的慢变化：扬起方向、高度和伸展长度各自缓慢漂移。
+      const yaw = r.yaw + 0.35 * wave(noise, tt * 0.13, 11.3);
+      const height = r.h * (1 + 0.25 * wave(noise, tt * 0.11, 23.7));
+      const reach = r.len * (1 + 0.15 * wave(noise, tt * 0.09, 31.9));
       // 各自朝主角方向偏开一个角度扬起
-      const cy = Math.cos(r.yaw);
-      const sy = Math.sin(r.yaw);
+      const cy = Math.cos(yaw);
+      const sy = Math.sin(yaw);
       d.set(dirP.x * cy + dirP.z * sy, 0, -dirP.x * sy + dirP.z * cy);
       side.crossVectors(UP, d);
       for (let i = 0; i <= strip.n; i++) {
         const u = i / strip.n;
         const p = strip.points[i].copy(calm[i]).addScaledVector(off, Math.pow(1 - u, 3));
         if (a > 0.001 || st.strike > 0.001) {
-          const rise = r.h * (1 - (1 - u) * (1 - u));
+          const rise = height * (1 - (1 - u) * (1 - u));
+          // 上下与左右各一路噪声，从根部传向末端，越到末端摆得越开。
+          const lift = wave(noise, u * 1.4 - tt * 0.42, 3.1 + tt * 0.05);
+          const swing = wave(noise, u * 1.8 - tt * 0.55, 7.9 + tt * 0.05);
           pa.copy(wrist)
-            .addScaledVector(d, 0.12 * u + 0.8 * u * r.len)
-            .addScaledVector(UP, 0.02 + rise + 0.13 * Math.sin(u * 4.0 - time * 1.25 + r.phase * 1.7) * u)
-            .addScaledVector(side, Math.sin(u * 5.5 - time * 1.7 + r.phase) * 0.22 * u);
+            .addScaledVector(d, 0.12 * u + 0.8 * u * reach)
+            .addScaledVector(UP, 0.02 + rise + 0.2 * flutter * lift * u)
+            .addScaledVector(side, 0.33 * flutter * swing * u);
           p.lerp(pa, a);
           if (st.strike > 0.001) {
             ps.copy(wrist).lerp(target, u).addScaledVector(side, Math.sin(u * 9 + r.phase) * 0.06 * (1 - u));
@@ -239,10 +262,11 @@ export function createRibbons(kagari) {
           }
         }
       }
+      // 倒竖化作利刃：根部略宽，向末端平滑收成尖刃，宽度沿长度连续变化。
       const sp2 = st.spike;
       strip.rebuild(
-        (u, i) => lerp(0.034, 0.02, u * u) * (1 + sp2 * (i % 2 ? 1.5 : -0.5)) * (1 - 0.6 * st.strike * u),
-        (u) => a * (1 - st.strike) * (u * 5.0 + Math.sin(time * 0.8 + u * 3.0 + r.phase)),
+        (u) => lerp(0.034, 0.02, u * u) * lerp(1, 1.4 * Math.pow(1 - u, 0.8), sp2) * (1 - 0.6 * st.strike * u),
+        (u) => a * (1 - st.strike) * (u * 5.0 + 1.6 * flutter * wave(noise, u * 1.0 - tt * 0.27, 15.2 + tt * 0.03)),
       );
     }
   }

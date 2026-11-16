@@ -34,7 +34,7 @@ export function surfaceAt(x, z) {
 /**
  * 判断从 (fromX, fromZ) 走到 (x, z) 是否是走出崖边：目标处有地面、不在主树树根范围内，
  * 并且比脚下低出 canWalkTo 允许的台阶高度，或者是往下的陡坡。须在场景加载后调用。
- * @returns {boolean} canWalkTo 不允许而这里为 true 时，玩家应腾空下落而不是被挡住。
+ * @returns {boolean} 是走出崖边时返回 true。
  */
 export function isLedgeDrop(x, z, fromX, fromZ) {
   const surface = sampleGround(x, z);

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { characterToon, addSkinnedOutline, addOutline } from './materials.js';
+import { characterToon, addSkinnedOutline, addOutline, COLORS } from './materials.js';
 import { smoothstep, lerp, clamp, damp } from '../util/noise.js';
 import { drapeSeatedSkirt } from './skirt.js';
 import { prepareSleeve } from './sleeves.js';
@@ -155,8 +155,9 @@ function toonFrom(src) {
     : /HAIR/.test(n) ? 'hair'
     : /Petticoat/.test(n) ? 'frill'
     : /Ribbon/.test(n) ? 'ribbon' : 'cloth';
+  // 手腕缠的缎带取垂下长缎带两端红色的中间色，两者看起来是同一条缎带。
   const color = /FaceMouth/.test(n) ? 0xc7a5a3
-    : /Ribbon \| crimson/.test(n) ? 0x8050a0 : map ? 0xffffff : src.color.getHex();
+    : /Ribbon \| crimson/.test(n) ? COLORS.ribbonA.clone().lerp(COLORS.ribbonB, 0.5) : map ? 0xffffff : src.color.getHex();
   const m = characterToon(color, profile, {
     map, side: THREE.DoubleSide,
     normalMap: src.normalMap, normalScale: src.normalScale,
@@ -550,6 +551,7 @@ export async function createKagari() {
     expression: 'neutral',
     expr: Object.fromEntries(EXPR_KEYS.map((k) => [k, EXPR.neutral[k] || 0])),
     canSee: false,
+    isFacing: false, // 主角是否在她身前半边，在身后时始终低头
     blink: 0,
     nextBlink: 2.5,
   };
@@ -559,14 +561,19 @@ export async function createKagari() {
   head.updateWorldMatrix(true, false);
   root.worldToLocal(head.getWorldPosition(HEAD_C));
 
-  // 看图纸时的头部姿态：低着头看手边，略偏向描画的那只手
-  const WORK_PITCH = -3 * D2R;
+  // 看图纸时的头部姿态：低着头看手边，略偏向描画的那只手。WORK_PITCH 为正时向下看，颈部再分担其中约一半。
+  const WORK_PITCH = 30 * D2R;
   const WORK_YAW = 5 * D2R;
-  const qWork = quatFromForward(
-    V(Math.sin(WORK_YAW) * Math.cos(WORK_PITCH), -Math.sin(WORK_PITCH), Math.cos(WORK_YAW) * Math.cos(WORK_PITCH)),
-    -0.025,
-    new THREE.Quaternion(),
-  );
+  const WORK_ROLL = -0.025;
+  // 低头看纸时随机小幅摆头：每隔 SWAY_INTERVAL 秒换一个偏移目标，再缓慢转过去，像是在纸上找东西。
+  const SWAY_YAW = 9 * D2R;
+  const SWAY_PITCH = 5 * D2R;
+  const SWAY_ROLL = 3 * D2R;
+  const SWAY_INTERVAL = [1.5, 4];
+  const SWAY_RATE = 1.2;
+  const sway = { yaw: 0, pitch: 0, roll: 0, targetYaw: 0, targetPitch: 0, targetRoll: 0, next: 0 };
+  const workDir = new THREE.Vector3();
+  const qWork = new THREE.Quaternion();
   const qLook = new THREE.Quaternion();
   const qHead = new THREE.Quaternion();
   const qNeck = new THREE.Quaternion();
@@ -665,14 +672,33 @@ export async function createKagari() {
     tmp.subVectors(camLocal, HEAD_C);
     const yawRaw = Math.atan2(tmp.x, tmp.z);
     state.canSee = Math.abs(yawRaw) < 118 * D2R;
+    // 主角在她身前半边（偏离正前方约 90° 以内）时才抬头，绕到身后时始终低头看纸。
+    // 进出各留 5° 余量，主角停在分界线附近时她保持当前姿态。
+    const facingLimit = (state.isFacing ? 95 : 85) * D2R;
+    state.isFacing = Math.abs(yawRaw) < facingLimit;
     const yaw = clamp(yawRaw, -50 * D2R, 50 * D2R);
     const pitch = clamp(Math.atan2(tmp.y, Math.hypot(tmp.x, tmp.z)), -16 * D2R, 8 * D2R);
     dir.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
     // 抬头回望姿态：轻抬下巴看向主角，肩膀与双手保持按在纸面上的原位。
     quatFromForward(dir, -0.02, qLook);
-    const want = state.canSee ? state.lookTarget : 0;
+    const want = state.isFacing ? state.lookTarget : 0;
     state.look = damp(state.look, want, state.lookSpeed, dt);
     const lw = state.look * state.look * (3 - 2 * state.look);
+    sway.next -= dt;
+    if (sway.next <= 0) {
+      sway.next = lerp(SWAY_INTERVAL[0], SWAY_INTERVAL[1], Math.random());
+      sway.targetYaw = (Math.random() * 2 - 1) * SWAY_YAW;
+      sway.targetPitch = (Math.random() * 2 - 1) * SWAY_PITCH;
+      sway.targetRoll = (Math.random() * 2 - 1) * SWAY_ROLL;
+    }
+    sway.yaw = damp(sway.yaw, sway.targetYaw, SWAY_RATE, dt);
+    sway.pitch = damp(sway.pitch, sway.targetPitch, SWAY_RATE, dt);
+    sway.roll = damp(sway.roll, sway.targetRoll, SWAY_RATE, dt);
+    const workYaw = WORK_YAW + sway.yaw;
+    const workPitch = WORK_PITCH + sway.pitch;
+    workDir.set(Math.sin(workYaw) * Math.cos(workPitch), -Math.sin(workPitch), Math.cos(workYaw) * Math.cos(workPitch));
+    quatFromForward(workDir, WORK_ROLL + sway.roll, qWork);
+    // 抬头时从低头姿态过渡到看主角，摆头随之淡出。
     qHead.copy(qWork).slerp(qLook, lw);
     // 轻微的呼吸
     _q1.setFromAxisAngle(_v4.set(1, 0, 0), Math.sin(time * 1.3) * 0.004);

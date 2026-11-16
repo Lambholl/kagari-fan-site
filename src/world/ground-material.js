@@ -13,7 +13,7 @@ function hash(x, y, seed) {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-// 原地基 2 快速傅里叶变换，长度必须是 2 的幂；只用来合成随机相位的噪声，正反方向和缩放都不影响结果，所以不区分。
+// 原地基 2 快速傅里叶变换，长度必须是 2 的幂；只用来合成随机相位的噪声，正反方向和缩放都不影响结果，所以只实现一个方向、不做归一化。
 function fft(re, im) {
   const n = re.length;
   for (let i = 1, j = 0; i < n; i++) {
@@ -52,7 +52,7 @@ function fft(re, im) {
 
 /**
  * 频域合成的无缝噪声：每个频率取随机相位、按 amplitude 给定振幅，再变换回空间域。
- * 频率都是整数周期，所以首尾相接；没有格点，也不会像值噪声那样在格点处坡度为 0、各层格点对齐成规则的平点。
+ * 频率都是整数周期，所以首尾相接，坡度在各处随机分布。
  * 返回均值 0、标准差 1 的 size × size 数组。
  */
 function spectralNoise(size, amplitude, seed) {
@@ -127,7 +127,7 @@ export function createGroundDetailTexture(size = 512) {
   const count = size * size;
   // 草叶底纹：约 50 至 200 个周期的宽频噪声，再叠加逐像素随机值。
   const grainBase = spectralNoise(size, (f) => highPass(f, 48) * Math.exp(-((f / 160) ** 2)), 3);
-  // 成团起伏：振幅按频率平方反比衰减，每高一个八度起伏减半，与原先五层分形噪声的频谱相同；约 4 个周期以下截掉。
+  // 成团起伏：振幅按频率平方反比衰减，每高一个八度起伏减半，约 4 个周期以下截掉。
   const clumpBase = spectralNoise(size, (f) => (highPass(f, 4) * Math.exp(-((f / 80) ** 2))) / (f * f), 11);
   const grain = new Float32Array(count);
   const clump = new Float32Array(count);
@@ -136,7 +136,7 @@ export function createGroundDetailTexture(size = 512) {
     for (let x = 0; x < size; x++) {
       const i = y * size + x;
       grain[i] = 0.3 * clamp01(0.5 + 0.17 * grainBase[i]) + 0.15 * hash(x, y, 5);
-      // 标准差 0.17 与原先分形噪声拉伸到 0 至 1 后相近，超出 3 个标准差的极少数值截断。
+      // 标准差取 0.17，0.5 上下 3 个标准差约为 0 至 1，超出的极少数值截断。
       clump[i] = clamp01(0.5 + 0.17 * clumpBase[i]);
     }
   }
@@ -158,7 +158,7 @@ export function createGroundDetailTexture(size = 512) {
   normalize(grain);
   // 存成半浮点：8 位存高度时每级 1/255，缓坡上连续几个像素取值相同、再跳一级，
   // 凹凸光照会沿等高线画出一圈圈环纹；半浮点在 0.5 至 1 之间每级约 1/2048，台阶小到看不出。
-  // 在 CPU 上逐级 2×2 平均生成 mipmap，不依赖浮点贴图能否作为渲染目标。
+  // 在 CPU 上逐级 2×2 平均生成 mipmap，浮点贴图不能作为渲染目标的设备上也能用。
   const mipmaps = [];
   // 每级 mipmap 里两个通道的坡度能量（第 0 级像素为单位），供着色器估算被过滤掉的起伏。
   const slopeEnergy = [[], []];
@@ -334,7 +334,7 @@ float grassClump(vec2 p, vec2 dpx, vec2 dpy, vec2 k) {
   const float l = CLUMP_LARGE_FREQ;
   float small = groundSampleNoTile(ROTATE_A * p * s, ROTATE_A * dpx * s, ROTATE_A * dpy * s, k.x).g;
   float large = groundSampleNoTile(ROTATE_B * p * l + 0.37, ROTATE_B * dpx * l, ROTATE_B * dpy * l, k.y).g;
-  // 两次采样互不相关，系数平方和约为 0.85，叠加后对比度与原先单次采样相近。
+  // 两次采样互不相关，系数平方和约为 0.85，叠加后对比度与单次采样相近。
   return 0.5 + (small - 0.5) * CLUMP_SMALL_WEIGHT + (large - 0.5) * CLUMP_LARGE_WEIGHT;
 }
 
@@ -458,7 +458,7 @@ float groundLostSlope2;
       rockGrad = vec2(rockHeight(rockPos + dpx, footprint) - r, rockHeight(rockPos + dpy, footprint) - r) * rockFade;
     }
     groundBumpGrad = mix(groundBumpGrad, rockGrad, rock);
-    // 岩面起伏不做方差补偿。
+    // 坡度方差只统计了草地细节贴图，按岩石比例把补偿减掉，岩面按原法线着色。
     groundLostSlope2 *= 1.0 - rock;
   }
 #endif
