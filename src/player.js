@@ -30,6 +30,13 @@ const EYE_DOWN = 0.3;
 // 撞向主树树根的速度（沿指向树心方向的分量，米/秒）超过这个值就算撞死。
 // 奔跑速度 5 米/秒，正面撞上约 5；与正面夹角超过约 40° 时分量低于 3.8，算擦过；走路速度 2.5 米/秒，怎么撞都不算。
 const TREE_LETHAL = 3.8;
+// 穿过树干掉出世界后，先在树干里滑行 CLIP_SINK_DELAY 秒再往下沉，镜头能看到树干内部。
+const CLIP_SINK_DELAY = 0.3;
+// 掉出世界后水平速度每秒按 e 的 -CLIP_DRAG 次方衰减。
+const CLIP_DRAG = 1.2;
+// 掉出世界后的最大下落速度（米/秒）。第一次穿过去的独白约一分钟：20 秒时掉到约 115 米深，
+// 场景雾遮掉头顶世界的两成；50 秒约 300 米，遮掉约四分之三，独白结束时世界淡进雾里。
+const CLIP_TERMINAL = 6;
 // 落在走不上去的陡坡上时，沿坡往下滑的水平加速度（米/秒²）。
 const SLIDE_ACCEL = 6;
 // 落在可以走的地面上时，水平速度只保留这个比例。
@@ -57,10 +64,13 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     zoom: 1, // 当前放大倍率，平滑趋向 zoomTarget
     airborne: false, // 走出崖边后正在下落或沿陡坡下滑
     downed: false, // 摔死或撞树后躺在地上，直到 teleport
+    clipping: false, // 穿过树干掉出世界，直到 teleport
   };
   let zoomTarget = 1;
   // 下落中的脚底高度、竖直速度、起跳点高度，以及是否已通知过摔死。
   const fall = { feet: 0, vy: 0, top: 0, isReported: false };
+  // 穿过树干后已经过的秒数，以及脚底高度和竖直速度。
+  const clip = { t: 0, feet: 0, vy: 0 };
   const keys = new Set();
   const vel = new THREE.Vector2();
   const joy = { id: null, sx: 0, sy: 0, x: 0, y: 0 };
@@ -111,8 +121,8 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     zoomTarget = clamp(zoomTarget * 2 ** (-pixels / ZOOM_WHEEL_PIXELS_PER_OCTAVE), ZOOM_MIN, ZOOM_MAX);
   }
   function rotate(dx, dy, sens) {
-    // 躺倒在地上时视线由剧情控制，忽略鼠标和触屏的转动。
-    if (st.downed) return;
+    // 躺倒在地上或掉出世界时视线由剧情控制，忽略鼠标和触屏的转动。
+    if (st.downed || st.clipping) return;
     // 放大后同样的鼠标位移按倍率缩小转角，准星在画面上移动的速度与不放大时一致。
     const turn = sens * lookSensitivity / st.zoom;
     st.yaw -= dx * turn;
@@ -235,6 +245,23 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     hooks.onTreeCrash?.();
   }
 
+  function clipThroughTree() {
+    st.clipping = true;
+    clip.t = 0;
+    clip.feet = heightAt(st.x, st.z);
+    clip.vy = 0;
+    hooks.onTreeClip?.();
+  }
+
+  function updateClip(dt) {
+    clip.t += dt;
+    vel.multiplyScalar(Math.exp(-CLIP_DRAG * dt));
+    if (clip.t > CLIP_SINK_DELAY) {
+      clip.vy = Math.max(clip.vy - GRAVITY * dt, -CLIP_TERMINAL);
+      clip.feet += clip.vy * dt;
+    }
+  }
+
   function startFall() {
     st.airborne = true;
     fall.feet = fall.top = heightAt(st.x, st.z);
@@ -309,11 +336,12 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     // yaw = 0 时面朝 -z
     const wx = (mx * cos + mz * sin) * sp;
     const wz = (-mx * sin + mz * cos) * sp;
-    // 腾空时不受操控，保持走出崖边时的水平速度。
-    if (!st.airborne) {
+    // 腾空和掉出世界时不受操控，保持离开地面时的水平速度。
+    if (!st.airborne && !st.clipping) {
       vel.x = damp(vel.x, wx, 10, dt);
       vel.y = damp(vel.y, wz, 10, dt);
     }
+    if (st.clipping) updateClip(dt);
     let nx = st.x + vel.x * dt;
     let nz = st.z + vel.y * dt;
 
@@ -321,23 +349,29 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     const bx = nx - BLOCK.x;
     const bz = nz - BLOCK.z;
     const bd = Math.hypot(bx, bz);
-    if (bd < BLOCK.r) {
+    if (bd < BLOCK.r && !st.clipping) {
       nx = BLOCK.x + (bx / (bd || 1)) * BLOCK.r;
       nz = BLOCK.z + (bz / (bd || 1)) * BLOCK.r;
     }
     // “今夜”的边界
     const r = Math.hypot(nx, nz);
-    if (r > WORLD_R) {
+    if (r > WORLD_R && !st.clipping) {
       nx *= WORLD_R / r;
       nz *= WORLD_R / r;
       hooks.onBoundary?.();
     }
-    if (st.airborne) {
+    // 掉出世界后跳过所有阻挡和地面检查，包括上面篝的裙摆和“今夜”的边界，主角穿过地面一直往下掉。
+    if (st.clipping) {
+      // 位置已经由 updateClip 和水平速度算好。
+    } else if (st.airborne) {
       updateFall(nx, nz, dt);
     } else if (isTreeCrash(nx, nz)) {
-      crashIntoTree();
-      nx = st.x;
-      nz = st.z;
+      if (hooks.shouldClipThroughTree?.()) clipThroughTree();
+      else {
+        crashIntoTree();
+        nx = st.x;
+        nz = st.z;
+      }
     } else if (!canWalkTo(nx, nz, st.x, st.z)) {
       // 往下走出崖边就腾空；往上的陡坡和树根仍然挡住，尝试沿单个坐标轴滑动。
       if (isLedgeDrop(nx, nz, st.x, st.z)) startFall();
@@ -354,12 +388,13 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     st.eye = damp(st.eye, st.downed ? EYE_DOWN : st.sitting ? EYE_SIT : EYE_STAND, 5, dt);
     st.lean = damp(st.lean, st.leanTarget, 4, dt);
     const prevBob = st.bob;
-    // 腾空时停住脚步声和视线起伏。
-    if (!st.airborne) st.bob += moved * 1.75;
+    // 腾空和掉出世界时停住脚步声和视线起伏。
+    const isOffGround = st.airborne || st.clipping;
+    if (!isOffGround) st.bob += moved * 1.75;
     if (Math.floor(prevBob / Math.PI) !== Math.floor(st.bob / Math.PI) && moved > 0) hooks.onStep?.(st.x, st.z, running);
-    const bobAmt = st.airborne ? 0 : Math.min(1, st.speed / WALK);
+    const bobAmt = isOffGround ? 0 : Math.min(1, st.speed / WALK);
     const bobY = Math.abs(Math.sin(st.bob)) * 0.035 * bobAmt;
-    const ground = st.airborne ? fall.feet : heightAt(st.x, st.z);
+    const ground = st.clipping ? clip.feet : st.airborne ? fall.feet : heightAt(st.x, st.z);
     st.shake = damp(st.shake, 0, 4, dt);
     const shx = (Math.random() - 0.5) * st.shake * 0.06;
     const shy = (Math.random() - 0.5) * st.shake * 0.06;
@@ -394,6 +429,7 @@ export function createPlayer({ camera, dom, hooks = {} }) {
       st.roll = 0;
       st.airborne = false;
       st.downed = false;
+      st.clipping = false;
       vel.set(0, 0);
     },
     /** 面向某个世界坐标所需的 yaw 和 pitch（弧度）。 */

@@ -261,7 +261,7 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
       ],
     },
   };
-  const mishapCounts = { fall: 0, tree: 0 };
+  const mishapCounts = { fall: 0, tree: 0, clip: 0 };
 
   /**
    * 播放摔死或撞树后的倒地演出和独白，结束后送回出生点。
@@ -292,6 +292,86 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
     await ui.fade(1, 1.2);
     if (isFirst) await ui.say('……被搅乱的水面，又静了下来。');
     player.setSitting(false);
+    player.teleport(SPAWN.x, SPAWN.z, SPAWN.yaw, SPAWN.pitch);
+    post.desat = 0;
+    post.warp = 0;
+    await ui.fade(0, 1.6);
+    unlock();
+  }
+
+  // ———————————————————— 彩蛋：穿过树干，掉出世界 ————————————————————
+  // 撞树撞死过或穿过去过之后，再撞树时有 TREE_CLIP_CHANCE 的概率穿过树干、掉出世界。
+  // 主角在这里意识到自己身在一个同人游戏里。第一次播放完整独白，之后轮流播放短独白。
+  const TREE_CLIP_CHANCE = 0.25;
+  const CLIP_LINES = {
+    // 穿进树干、开始往下沉的时候
+    enter: [
+      '……咦？',
+      '没有撞上的感觉。树皮的纹路从眼前滑了过去——是从里面。',
+      '这棵老树的里面，什么都没有。不是树洞的那种空，是根本没有“里面”这回事。',
+      '然后，脚下也空了。不是悬崖。比悬崖还要彻底。',
+    ],
+    // 视线转向头顶的世界之后
+    above: [
+      '抬头看。山丘、雏菊、那张纸，全都在头顶上。',
+      '从背面看，世界原来这么薄。',
+      { text: '（坐标……）', speaker: '瑚太朗' },
+      '坐标，错开得有点太多了。',
+      '……啊。想起来了。',
+      '这是同人游戏来着。',
+      '树的碰撞，大概是做的人在某个深夜随手画下的一个圆。全速撞上去，总有一次会从缝里漏出去。',
+      '这么说来，一次又一次朝同一棵树全速冲过去的——其实不是我吧。',
+      '月亮还挂在那里。连世界的背面都照着，真是勤快。',
+      '算了。往下掉的时候，想再多也没用。',
+      '这个问题，做游戏的人好像没打算改。',
+    ],
+    repeat: [
+      ['又一次，从树干里穿了过去。', '这里的物理法则，大概也是同人设定。'],
+      ['世界的背面，第二次看还是一样空。', '……下次再撞，记得换一棵树。虽然这里只有这一棵。'],
+      ['往下掉的途中，数了数撞树的次数。', '数到一半就放弃了。这种数字，大概只有屏幕那边的人记得。'],
+    ],
+  };
+
+  /** 依次显示独白；带 speaker 的行是说出口的话。 */
+  async function sayLines(lines) {
+    for (const l of lines) {
+      if (typeof l === 'string') await ui.say(l);
+      else await ui.say(l.text, l);
+    }
+  }
+
+  /**
+   * 穿过树干后的演出：边往下掉边抬头看头顶的世界，播放独白，之后送回出生点。
+   * 调用前玩家必须已经进入掉出世界的状态。
+   */
+  async function clipOutOfWorld() {
+    lockForScene(false);
+    const isFirst = mishapCounts.clip === 0;
+    mishapCounts.clip++;
+    // 穿过树干的一瞬间画面错位一下，色差由逐帧逻辑自己衰减。
+    post.aberr = 2.4;
+    ps.shake = 0.5;
+    await tl.wait(0.9);
+    const p0 = ps.pitch;
+    const r0 = ps.roll;
+    // 慢慢仰起头，身体跟着轻轻侧翻。
+    const lookUp = () => tl.tween(5, (k) => {
+      ps.pitch = lerp(p0, 1.25, k);
+      ps.roll = lerp(r0, 0.35, k);
+    });
+    if (isFirst) {
+      await sayLines(CLIP_LINES.enter);
+      const turning = lookUp();
+      await tl.wait(2.5);
+      await sayLines(CLIP_LINES.above);
+      await turning;
+    } else {
+      const turning = lookUp();
+      await sayLines(CLIP_LINES.repeat[(mishapCounts.clip - 2) % CLIP_LINES.repeat.length]);
+      await turning;
+    }
+    await ui.fade(1, 1.6);
+    if (isFirst) await ui.say('……这件事，就别告诉篝了。', { speaker: '瑚太朗' });
     player.teleport(SPAWN.x, SPAWN.z, SPAWN.yaw, SPAWN.pitch);
     post.desat = 0;
     post.warp = 0;
@@ -720,6 +800,22 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
      */
     onTreeCrash() {
       mishapDeath('tree');
+    },
+    /**
+     * 掷骰决定这次撞树是否穿过树干。撞树撞死过或穿过去过之后，没有其他场景进行时，按 TREE_CLIP_CHANCE 的概率返回 true。
+     * @returns {boolean}
+     */
+    shouldClipThroughTree() {
+      if (S.mode !== 'play' || S.busy) return false;
+      if (mishapCounts.tree + mishapCounts.clip === 0) return false;
+      return Math.random() < TREE_CLIP_CHANCE;
+    },
+    /**
+     * 处理玩家穿过树干掉出世界：边往下掉边播放独白，之后送回出生点。
+     * @returns {void}
+     */
+    onTreeClip() {
+      clipOutOfWorld();
     },
   };
 }

@@ -246,6 +246,8 @@ async function boot() {
         audio.treeHit();
         story?.onTreeCrash();
       },
+      shouldClipThroughTree: () => story?.shouldClipThroughTree() ?? false,
+      onTreeClip: () => story?.onTreeClip(),
       // 落地速度约 9 米/秒（从 4 米高处落下）以上时按最大力度播放。
       onLand: (speed) => audio.land((speed - 2) / 7),
       onSit: (v) => ui.setSitLabel(v),
