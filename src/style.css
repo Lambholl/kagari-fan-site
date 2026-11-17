@@ -194,7 +194,8 @@ body:has(#title:not(.gone)) #corner {
   pointer-events: auto;
 }
 /* 仅使用纯半透明底色，省略 backdrop-filter 模糊以免拖慢实时 WebGL 画面合成。 */
-#top-buttons button {
+#top-buttons button,
+#link-github {
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -206,9 +207,23 @@ body:has(#title:not(.gone)) #corner {
   transition: background 0.2s, border-color 0.2s;
 }
 #top-buttons button:hover,
-#top-buttons button[aria-expanded="true"] {
+#top-buttons button[aria-expanded="true"],
+#link-github:hover,
+#link-github:focus-visible {
   background: rgba(30, 60, 130, 0.6);
   border-color: rgba(191, 230, 255, 0.7);
+}
+#link-github {
+  display: grid;
+  place-items: center;
+}
+#link-github svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+body:has(#title.gone) #link-github {
+  display: none;
 }
 #btn-fullscreen svg {
   display: block;
