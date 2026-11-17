@@ -299,6 +299,116 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
     unlock();
   }
 
+  // ———————————————————— 彩蛋：穿模，掉出世界 ————————————————————
+  // 撞树撞死过或穿过树干之后，再撞树时有 CLIP_CHANCE 的概率穿过树干、掉出世界；
+  // 摔死过或穿过崖下地面之后，再摔到会摔死的高度时，同样有 CLIP_CHANCE 的概率穿过地面。
+  // 主角在这里意识到自己身在一个同人游戏里。第一次穿模（不论哪一种）播放完整独白，之后按穿模的种类轮流播放短独白。
+  const CLIP_CHANCE = 0.25;
+  const CLIP_LINES = {
+    tree: {
+      // 穿进树干、开始往下沉的时候
+      enter: [
+        '……咦？',
+        '没有撞上的感觉。树皮的纹路从眼前滑了过去——是从里面。',
+        '这棵老树的里面，什么都没有。不是树洞的那种空，是根本没有“里面”这回事。',
+        '然后，脚下也空了。不是悬崖。比悬崖还要彻底。',
+      ],
+      // 意识到这是同人游戏之后，想到自己是怎么掉出来的
+      cause: [
+        '树的碰撞，大概是做的人在某个深夜随手画下的一个圆。全速撞上去，总有一次会从缝里漏出去。',
+        '这么说来，一次又一次朝同一棵树全速冲过去的——其实不是我吧。',
+      ],
+      repeat: [
+        ['又一次，从树干里穿了过去。', '这里的物理法则，大概也是同人设定。'],
+        ['世界的背面，第二次看还是一样空。', '……下次再撞，记得换一棵树。虽然这里只有这一棵。'],
+        ['往下掉的途中，数了数撞树的次数。', '数到一半就放弃了。这种数字，大概只有屏幕那边的人记得。'],
+      ],
+    },
+    fall: {
+      enter: [
+        '……咦？',
+        '着地的冲击，没有来。',
+        '脚底碰到草地的那一下，地面像水面一样，把我吞了进去。',
+        '然后，四周什么都没有了。悬崖的下面，原来还有更下面。',
+      ],
+      cause: [
+        '地面的碰撞，大概是做的人在某个深夜随手铺上去的一层皮。掉得够快，就会直接穿过去。',
+        '这么说来，一次又一次从同一座悬崖上走下去的——其实不是我吧。',
+      ],
+      repeat: [
+        ['又一次，穿过了崖下的地面。', '摔死和掉出世界，哪个更丢人呢。'],
+        ['悬崖的下面，接着的是世界的背面。', '……这条近路，大概不会写进攻略。'],
+        ['下落，着地，然后接着下落。', '这一次的落地点，好像设在了世界外面。'],
+      ],
+    },
+    // 两种穿模共用，视线转向头顶的世界之后播放，cause 插在 realize 和 after 之间。
+    realize: [
+      '抬头看。山丘、雏菊、那张纸，全都在头顶上。',
+      '从背面看，世界原来这么薄。',
+      { text: '（坐标……）', speaker: '瑚太朗' },
+      '坐标，错开得有点太多了。',
+      '……啊。想起来了。',
+      '这是同人游戏来着。',
+    ],
+    after: [
+      '月亮还挂在那里。连世界的背面都照着，真是勤快。',
+      '算了。往下掉的时候，想再多也没用。',
+      '这个问题，做游戏的人好像没打算改。',
+    ],
+  };
+  const clipCounts = { tree: 0, fall: 0 };
+  // 各种穿模已经播放过的短独白段数，用来轮换。
+  const clipRepeatCounts = { tree: 0, fall: 0 };
+
+  /** 依次显示独白；带 speaker 的行是说出口的话。 */
+  async function sayLines(lines) {
+    for (const l of lines) {
+      if (typeof l === 'string') await ui.say(l);
+      else await ui.say(l.text, l);
+    }
+  }
+
+  /**
+   * 穿模后的演出：边往下掉边抬头看头顶的世界，播放独白，之后送回出生点。
+   * 调用前玩家必须已经进入掉出世界的状态。
+   * @param {keyof typeof clipCounts} kind - 穿过树干还是崖下地面。
+   */
+  async function clipOutOfWorld(kind) {
+    lockForScene(false);
+    const isFirst = clipCounts.tree + clipCounts.fall === 0;
+    clipCounts[kind]++;
+    // 穿过去的一瞬间画面错位一下，色差由逐帧逻辑自己衰减。
+    post.aberr = 2.4;
+    ps.shake = 0.5;
+    await tl.wait(0.9);
+    const p0 = ps.pitch;
+    const r0 = ps.roll;
+    // 慢慢仰起头，身体跟着轻轻侧翻。
+    const lookUp = () => tl.tween(5, (k) => {
+      ps.pitch = lerp(p0, 1.25, k);
+      ps.roll = lerp(r0, 0.35, k);
+    });
+    const lines = CLIP_LINES[kind];
+    if (isFirst) {
+      await sayLines(lines.enter);
+      const turning = lookUp();
+      await tl.wait(2.5);
+      await sayLines([...CLIP_LINES.realize, ...lines.cause, ...CLIP_LINES.after]);
+      await turning;
+    } else {
+      const turning = lookUp();
+      await sayLines(lines.repeat[clipRepeatCounts[kind]++ % lines.repeat.length]);
+      await turning;
+    }
+    await ui.fade(1, 1.6);
+    if (isFirst) await ui.say('……这件事，就别告诉篝了。', { speaker: '瑚太朗' });
+    player.teleport(SPAWN.x, SPAWN.z, SPAWN.yaw, SPAWN.pitch);
+    post.desat = 0;
+    post.warp = 0;
+    await ui.fade(0, 1.6);
+    unlock();
+  }
+
   // ———————————————————— 第一次接近：有力量的语言 ————————————————————
   async function seqGlyph() {
     lockForScene(false);
@@ -720,6 +830,24 @@ export function createStory({ ui, tl, player, kagari, ribbons, paper, sky, items
      */
     onTreeCrash() {
       mishapDeath('tree');
+    },
+    /**
+     * 掷骰决定这次撞树或会摔死的落地是否穿模。同一种死法死过或穿模过之后，没有其他场景进行时，按 CLIP_CHANCE 的概率返回 true。
+     * @param {'tree' | 'fall'} kind - 撞树还是坠崖。
+     * @returns {boolean}
+     */
+    shouldClipThrough(kind) {
+      if (S.mode !== 'play' || S.busy) return false;
+      if (mishapCounts[kind] + clipCounts[kind] === 0) return false;
+      return Math.random() < CLIP_CHANCE;
+    },
+    /**
+     * 处理玩家穿模掉出世界：边往下掉边播放独白，之后送回出生点。
+     * @param {'tree' | 'fall'} kind - 穿过树干还是崖下地面。
+     * @returns {void}
+     */
+    onClip(kind) {
+      clipOutOfWorld(kind);
     },
   };
 }

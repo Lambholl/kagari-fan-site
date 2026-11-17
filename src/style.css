@@ -334,20 +334,23 @@ body:has(#title:not(.gone)) #corner {
   bottom: max(34px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
   width: min(820px, calc(100vw - 32px));
-  min-height: 92px;
   padding: 18px 28px 20px;
   border-top: 1px solid rgba(191, 230, 255, 0.35);
   background: linear-gradient(180deg, rgba(8, 22, 62, 0.78), rgba(4, 10, 30, 0.6) 70%, rgba(4, 10, 30, 0));
   border-radius: 4px 4px 0 0;
 }
 #subtitle .speaker {
-  min-height: 1.1em;
   margin-bottom: 6px;
   font: 600 13px/1.1 var(--serif);
   letter-spacing: 0.3em;
   color: var(--violet);
 }
+#subtitle .speaker:empty {
+  display: none;
+}
 #subtitle .text {
+  /* 打字机效果开始时文本还是空的。先撑开一行高度，对话框一出现就是单行台词的高度。 */
+  min-height: 1.75em;
   margin: 0;
   font: 500 clamp(16px, 2.1vw, 20px) / 1.75 var(--serif);
   letter-spacing: 0.06em;
@@ -668,7 +671,6 @@ body:has(#title:not(.gone)) #corner {
   }
   #subtitle {
     padding: 14px 18px 16px;
-    min-height: 84px;
   }
 }
 
