@@ -64,13 +64,13 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     zoom: 1, // 当前放大倍率，平滑趋向 zoomTarget
     airborne: false, // 走出崖边后正在下落或沿陡坡下滑
     downed: false, // 摔死或撞树后躺在地上，直到 teleport
-    clipping: false, // 穿过树干掉出世界，直到 teleport
+    clipping: false, // 穿过树干或崖下地面掉出世界，直到 teleport
   };
   let zoomTarget = 1;
   // 下落中的脚底高度、竖直速度、起跳点高度，以及是否已通知过摔死。
   const fall = { feet: 0, vy: 0, top: 0, isReported: false };
-  // 穿过树干后已经过的秒数，以及脚底高度和竖直速度。
-  const clip = { t: 0, feet: 0, vy: 0 };
+  // 掉出世界后已经过的秒数、开始往下沉前的秒数，以及脚底高度和竖直速度。
+  const clip = { t: 0, delay: 0, feet: 0, vy: 0 };
   const keys = new Set();
   const vel = new THREE.Vector2();
   const joy = { id: null, sx: 0, sy: 0, x: 0, y: 0 };
@@ -245,21 +245,24 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     hooks.onTreeCrash?.();
   }
 
-  function clipThroughTree() {
+  // kind 是 'tree' 或 'fall'；feet 和 vy 是穿过去时的脚底高度和竖直速度，sinkDelay 秒后才开始往下沉。
+  function startClip(kind, feet, vy, sinkDelay) {
     st.clipping = true;
     clip.t = 0;
-    clip.feet = heightAt(st.x, st.z);
-    clip.vy = 0;
-    hooks.onTreeClip?.();
+    clip.delay = sinkDelay;
+    clip.feet = feet;
+    clip.vy = vy;
+    hooks.onClip?.(kind);
   }
 
   function updateClip(dt) {
     clip.t += dt;
     vel.multiplyScalar(Math.exp(-CLIP_DRAG * dt));
-    if (clip.t > CLIP_SINK_DELAY) {
-      clip.vy = Math.max(clip.vy - GRAVITY * dt, -CLIP_TERMINAL);
-      clip.feet += clip.vy * dt;
-    }
+    if (clip.t <= clip.delay) return;
+    // 坠崖穿过地面时下落速度超过 CLIP_TERMINAL，平滑减到上限，穿过地面的那一下看起来像被地面吞进去。
+    if (clip.vy < -CLIP_TERMINAL) clip.vy = damp(clip.vy, -CLIP_TERMINAL, 2, dt);
+    else clip.vy = Math.max(clip.vy - GRAVITY * dt, -CLIP_TERMINAL);
+    clip.feet += clip.vy * dt;
   }
 
   function startFall() {
@@ -279,6 +282,11 @@ export function createPlayer({ camera, dom, hooks = {} }) {
       fall.feet = surface.height;
       if (surface.normalY >= 0.78) {
         st.airborne = false;
+        // 会摔死的落地由剧情决定是否穿过地面。穿过去时在这里返回，跳过落地声和震动。
+        if (fall.top - surface.height > FALL_LETHAL && hooks.shouldClipThrough?.('fall')) {
+          startClip('fall', fall.feet, fall.vy, 0);
+          return;
+        }
         hooks.onLand?.(-fall.vy);
         st.shake = Math.max(st.shake, Math.min(1.5, -fall.vy * 0.12));
         if (fall.top - surface.height > FALL_LETHAL) {
@@ -366,7 +374,7 @@ export function createPlayer({ camera, dom, hooks = {} }) {
     } else if (st.airborne) {
       updateFall(nx, nz, dt);
     } else if (isTreeCrash(nx, nz)) {
-      if (hooks.shouldClipThroughTree?.()) clipThroughTree();
+      if (hooks.shouldClipThrough?.('tree')) startClip('tree', heightAt(st.x, st.z), 0, CLIP_SINK_DELAY);
       else {
         crashIntoTree();
         nx = st.x;
