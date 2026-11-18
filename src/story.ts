@@ -216,7 +216,6 @@ export const createStory = ({
     S.alertT = 1
     S.spikeT = 1
     kagari.setLook(1, 9)
-    audio.bristle()
     audio.setTension(1)
     await tl.wait(0.4)
     audio.slash()
@@ -232,6 +231,7 @@ export const createStory = ({
       post.warp = k * 0.6
     })
     await tl.wait(0.5)
+    audio.land(0.7)
     await ui.fade(1, 0.8)
     await tumble
     S.deaths++
@@ -241,7 +241,6 @@ export const createStory = ({
     S.isAlertOn = false
     ribbons.state.alert = 0
     ribbons.state.spike = 0
-    audio.setTension(0)
     kagari.setLook(0, 9)
     if (isFirst) {
       await ui.say('somethingUnfurls')
