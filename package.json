@@ -7,12 +7,28 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "check": "run-p lint typecheck",
+    "format": "eslint . --fix && prettier . --write --cache",
+    "lint": "eslint . --cache --max-warnings 0 && prettier . --check --cache",
+    "typecheck": "tsc --noEmit",
+    "calculate-earth-view": "node --experimental-strip-types scripts/calculate-earth-view.ts",
     "preview": "vite preview"
   },
   "dependencies": {
     "three": "^0.187.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.5",
+    "@types/three": "~0.187.0",
+    "eslint": "^10.15.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.14.0",
+    "npm-run-all2": "^8.0.4",
+    "prettier": "^3.10.1",
+    "prettier-plugin-java": "^2.12.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.73.0",
     "vite": "^8.3.7"
   }
 }

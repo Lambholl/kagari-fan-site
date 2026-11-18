@@ -4,3 +4,4 @@ dist/
 .claude/
 .materials/
 .dist/
+.eslintcache

@@ -4,7 +4,7 @@
 
 - 作者及来源：[qpyiu123 / Patchouli-model-warehouse](https://github.com/qpyiu123/Patchouli-model-warehouse)，`galgame/Rewrite/Kagari-v9-rigged.blend`。
 - 模型许可：[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)。来源仓库说明模型使用了 VRoid Studio 和 AIGC 素材。
-- 网页适配：保留前臂贴身缠带并重命名材质供前端统一着为紫色，腕结和长短飘带由 `src/kagari/ribbons.js` 程序化生成；模型沿用骨骼驱动和表情形态键。
+- 网页适配：保留前臂贴身缠带并重命名材质供前端统一着为紫色，腕结和长短飘带由 `src/kagari/ribbons.ts` 程序化生成；模型沿用骨骼驱动和表情形态键。
 - 《Rewrite》及其角色的著作权归 ©VISUAL ARTS/Key 所有。
 
 模型由 `src/kagari/` 驱动袖根修正、跪坐裙摆与表情。导出脚本在绑定姿势下仅保留面部表情及袖根修正形态键，并将基础贴图与透明度接入标准 PBR 输出供前端替换为卡通着色。
