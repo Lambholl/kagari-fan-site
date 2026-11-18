@@ -20,18 +20,15 @@ const loadingLabel = computed(() =>
 <template>
   <section id="title" :class="{ gone: isHidden }">
     <div class="title-inner">
-      <p class="eyebrow">Rewrite ── Moon</p>
+      <p class="eyebrow">Rewrite ─ Moon</p>
       <h1>
         <span>月</span><span>王</span><span>篝</span><span>{{ t('titleLastCharacter') }}</span>
       </h1>
-      <p class="lead">
-        <small>{{ t('creators') }}</small>
+      <p class="author">{{ t('creators') }}</p>
+      <p v-if="hasLoadingError" class="desc" id="loading-error">
+        {{ t('loadingFailureHint') }}
       </p>
-      <p v-if="hasLoadingError" class="desc" id="loading-error">{{ t('loadingFailureHint') }}</p>
-      <p v-else class="desc" id="intro">
-        {{ t('introNight') }}<br />
-        {{ t('introPaper') }}
-      </p>
+      <p v-else class="desc" id="intro">{{ t('introNight') }}<br />{{ t('introPaper') }}</p>
       <div
         v-if="hasLoadingError || !loading.isDone"
         id="loading"
@@ -50,7 +47,9 @@ const loadingLabel = computed(() =>
         </p>
       </div>
       <div v-else class="actions">
-        <button id="btn-start" type="button" @click="emit('start', false)">{{ t('start') }}</button>
+        <button id="btn-start" type="button" @click="emit('start', false)">
+          {{ t('start') }}
+        </button>
         <button id="btn-free" type="button" class="ghost" @click="emit('start', true)">
           <span>{{ t('freeRoam') }}</span><small>{{ t('skipStory') }}</small>
         </button>

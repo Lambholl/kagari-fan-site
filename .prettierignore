@@ -1,6 +1,7 @@
 .dist/
 .materials/
 .venv/
+.vscode/
 dist/
 pnpm-lock.yaml
 *.md

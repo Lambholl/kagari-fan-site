@@ -6,8 +6,17 @@
   --violet: #b7a2ff;
   --magenta: #e45aa2;
   --night: #050a1c;
-  --serif: serif;
-  --sans: sans-serif;
+}
+
+:root,
+[lang|='zh'] {
+  --serif: 'Noto Serif SC', 'Source Han Serif SC', 'Source Han Serif CN', serif;
+  --sans: 'Ubuntu', 'Noto Sans SC', 'Source Han Sans SC', 'Source Han Sans CN', sans-serif;
+}
+
+[lang|='ja'] {
+  --serif: 'Noto Serif JP', 'Source Han Serif', 'Source Han Serif JP', serif;
+  --sans: 'Ubuntu', 'Noto Sans JP', 'Source Han Sans', 'Source Han Sans JP', sans-serif;
 }
 
 * {
@@ -293,6 +302,9 @@ body:has(#title.gone) #link-github {
   color-scheme: dark;
   font: inherit;
 }
+#language option {
+  font-family: var(--sans);
+}
 #settings p {
   margin: 6px 0 0;
   line-height: 1.45;
@@ -483,8 +495,8 @@ body:has(#title.gone) #link-github {
 }
 .eyebrow {
   margin: 0 0 22px;
-  font: 12px/1 var(--sans);
-  letter-spacing: 0.34em;
+  font: 14px/1 var(--sans);
+  letter-spacing: 0.05em;
   color: var(--ink-dim);
 }
 #title h1 {
@@ -503,10 +515,10 @@ body:has(#title.gone) #link-github {
 #title h1 span:nth-child(4) {
   transform: translateY(0.12em);
 }
-.lead {
+.author {
   margin: 30px 0 0;
   font: 13px/1 var(--sans);
-  letter-spacing: 0.25em;
+  letter-spacing: 0.05em;
   color: var(--violet);
 }
 .desc {

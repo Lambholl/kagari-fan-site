@@ -3,5 +3,7 @@
   "semi": false,
   "singleQuote": true,
   "trailingComma": "all",
-  "printWidth": 100
+  "printWidth": 100,
+  "vueIndentScriptAndStyle": false,
+  "singleAttributePerLine": false
 }

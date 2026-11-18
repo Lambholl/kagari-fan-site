@@ -23,7 +23,9 @@ const activate = () => {
 <template>
   <div id="hud" :hidden="!state.isHudVisible">
     <div id="chapter-tag">{{ state.tag ? t(state.tag) : '' }}</div>
-    <div v-if="state.deaths > 0" id="converge">{{ t('convergeCount', state.deaths) }}</div>
+    <div v-if="state.deaths > 0" id="converge">
+      {{ t('convergeCount', state.deaths) }}
+    </div>
     <div v-if="state.prompt && !state.isTouch" id="prompt">
       <kbd>E</kbd><span>{{ promptText }}</span>
     </div>
