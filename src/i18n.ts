@@ -1,6 +1,7 @@
+import { ref, watch } from 'vue'
 import { storyMessages } from './i18n/story-messages.ts'
 import { uiMessages } from './i18n/ui-messages.ts'
-import { bindSelectSetting } from './settings.ts'
+import { readSetting, saveSetting } from './settings.ts'
 import { getElement } from './util/dom.ts'
 
 const messages = { ...uiMessages, ...storyMessages }
@@ -12,12 +13,13 @@ export type MessageKey = keyof typeof messages
 export type StoryMessageKey = keyof typeof storyMessages
 
 type Locale = 'zh-CN' | 'ja'
-let locale: Locale = 'zh-CN'
-const listeners = new Set<() => void>()
+
+/** 当前界面和剧情语言。 */
+export const locale = ref<Locale>('zh-CN')
 
 /** 读取当前语言的文案，并按顺序替换参数占位符。 */
 export const translate = (key: MessageKey, ...values: (number | string)[]): string => {
-  const text = messages[key][locale === 'ja' ? 1 : 0]
+  const text = messages[key][locale.value === 'ja' ? 1 : 0]
   return values.length > 0
     ? text.replace(/\{(\d+)\}/g, (placeholder, index: string) =>
         String(values[Number(index)] ?? placeholder),
@@ -25,48 +27,23 @@ export const translate = (key: MessageKey, ...values: (number | string)[]): stri
     : text
 }
 
-/** 语言切换后调用 refresh，返回取消订阅的方法。 */
-export const onLocaleChange = (refresh: () => void): (() => void) => {
-  listeners.add(refresh)
-  return () => listeners.delete(refresh)
-}
-
-/** 恢复保存的语言，绑定设置中的语言选项并翻译页面上的固定文案。 */
+/** 恢复保存的语言，并同步页面元信息和三维场景的可访问名称。 */
 export const bindPageLanguage = (): void => {
-  const select = getElement('language', HTMLSelectElement)
-  select.value = /^ja(?:-|$)/i.test(navigator.language) ? 'ja' : 'zh-CN'
-  const attributes = [
-    ['data-i18n', null],
-    ['data-i18n-label', 'aria-label'],
-    ['data-i18n-title', 'title'],
-    ['data-i18n-content', 'content'],
-  ] as const
-  const bindings = attributes.flatMap(([marker, attribute]) =>
-    Array.from(document.querySelectorAll('[' + marker + ']'), (node) => {
-      const key = node.getAttribute(marker)!
-      if (!Object.hasOwn(messages, key)) {
-        throw new Error('未知文案键 ' + key)
-      }
-      return { node, key: key as MessageKey, attribute }
-    }),
-  )
+  const saved = readSetting('kagari.language')
+  const browserLocale = /^ja(?:-|$)/i.test(navigator.language) ? 'ja' : 'zh-CN'
+  locale.value = saved === 'ja' || saved === 'zh-CN' ? saved : browserLocale
+  const scene = getElement('app')
+  const description = document.querySelector('meta[name="description"]')
+  const applyLanguage = () => {
+    document.documentElement.lang = locale.value
+    document.title = translate('pageTitle')
+    description?.setAttribute('content', translate('pageDescription'))
+    scene.setAttribute('aria-label', translate('scene'))
+  }
 
-  bindSelectSetting(select, 'kagari.language', (value) => {
-    const previous = locale
-    locale = value === 'ja' ? 'ja' : 'zh-CN'
-    document.documentElement.lang = locale
-    for (const { node, key, attribute } of bindings) {
-      const text = translate(key)
-      if (attribute) {
-        node.setAttribute(attribute, text)
-      } else {
-        node.textContent = text
-      }
-    }
-    if (locale !== previous) {
-      for (const refresh of listeners) {
-        refresh()
-      }
-    }
+  applyLanguage()
+  watch(locale, (value) => {
+    saveSetting('kagari.language', value)
+    applyLanguage()
   })
 }

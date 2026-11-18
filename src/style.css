@@ -350,6 +350,7 @@ body:has(#title.gone) #link-github {
 
 #subtitle {
   position: absolute;
+  pointer-events: auto;
   left: 50%;
   bottom: max(34px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
@@ -407,11 +408,11 @@ body:has(#title.gone) #link-github {
   place-content: center;
   text-align: center;
   pointer-events: none;
-  opacity: 0;
   transition: opacity 1.1s ease;
 }
-#card.on {
-  opacity: 1;
+#card.card-enter-from,
+#card.card-leave-to {
+  opacity: 0;
 }
 #card h2 {
   margin: 0;

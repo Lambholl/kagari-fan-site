@@ -1,6 +1,7 @@
 import js from '@eslint/js'
 import { defineConfig, globalIgnores } from 'eslint/config'
 import prettier from 'eslint-config-prettier/flat'
+import vue from 'eslint-plugin-vue'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
@@ -20,13 +21,13 @@ export default defineConfig(
     languageOptions: { globals: globals.node },
   },
   {
-    files: ['src/**/*.{js,ts}'],
+    files: ['src/**/*.{js,ts,vue}'],
     languageOptions: { globals: globals.browser },
   },
   {
-    files: ['**/*.ts'],
+    files: ['**/*.{ts,vue}'],
     extends: [tseslint.configs.recommended],
-    languageOptions: { parserOptions: { projectService: true } },
+    languageOptions: { parserOptions: { projectService: true, extraFileExtensions: ['.vue'] } },
     rules: {
       '@typescript-eslint/consistent-type-imports': 'error',
       '@typescript-eslint/naming-convention': [
@@ -34,11 +35,11 @@ export default defineConfig(
         { selector: 'typeLike', format: ['PascalCase'] },
         { selector: 'memberLike', modifiers: ['private'], format: ['camelCase'] },
         {
-          // 这些对象键由 DOM、Three.js 和 Vite 的接口定义。
+          // 这些对象键由 DOM 和第三方库的接口定义。
           selector: 'objectLiteralProperty',
           types: ['boolean'],
           filter:
-            '^(alpha|antialias|colorWrite|depthBuffer|depthTest|depthWrite|fog|forceSinglePass|once|passive|polygonOffset|strictPort|transparent|value|vertexColors)$',
+            '^(alpha|antialias|colorWrite|depthBuffer|depthTest|depthWrite|fog|forceSinglePass|immediate|once|passive|polygonOffset|strictPort|transparent|value|vertexColors)$',
           format: null,
         },
         {
@@ -68,6 +69,11 @@ export default defineConfig(
       '@typescript-eslint/no-inferrable-types': 'error',
       '@typescript-eslint/only-throw-error': 'error',
     },
+  },
+  {
+    files: ['src/**/*.vue'],
+    extends: [vue.configs['flat/essential']],
+    languageOptions: { parserOptions: { parser: tseslint.parser } },
   },
   prettier,
   {

@@ -1,55 +1,84 @@
-/**
- * 将滑条的值应用到游戏，并把值保存到 localStorage 以便下次打开时恢复。
- *
- * 绑定时先恢复已保存的值（超出滑条 min 至 max 的值会被忽略），立即调用一次 apply，之后每次拖动都调用。
- * @param input - `type="range"` 的滑条。
- * @param key - localStorage 键名。
- */
-export const bindRangeSetting = (
-  input: HTMLInputElement,
-  key: string,
-  apply: (value: number) => void,
-): void => {
+/** 视角灵敏度使用百分比，视场角使用度。 */
+export const CAMERA_RANGES = {
+  sensitivity: { min: 20, max: 300, step: 5, initial: 100 },
+  fov: { min: 50, max: 90, step: 1, initial: 62 },
+} as const
+
+/** 抗锯齿的可选值和对应的界面文案键。 */
+export const ANTIALIAS_OPTIONS = {
+  off: 'aaOff',
+  fxaa: 'aaFxaa',
+  smaa: 'aaSmaa',
+  taa: 'aaTaa',
+} as const
+
+/** 读取保存的偏好。浏览器限制存储时返回 null。 */
+export const readSetting = (key: string): string | null => {
   try {
-    const saved = Number(localStorage.getItem(key) ?? NaN)
-    if (Number.isFinite(saved) && saved >= Number(input.min) && saved <= Number(input.max)) {
-      input.value = String(saved)
-    }
+    return localStorage.getItem(key)
   } catch {
-    // 浏览器禁止访问存储时，仍可在当前页面调节。
+    return null
   }
-  apply(input.valueAsNumber)
-  input.addEventListener('input', () => {
-    apply(input.valueAsNumber)
-    try {
-      localStorage.setItem(key, input.value)
-    } catch {
-      /* 禁止访问存储时仅在当前页生效 */
-    }
-  })
 }
 
-/** 将下拉框的选择应用到游戏，并把选项保存到 localStorage 以便下次打开时恢复。 */
-export const bindSelectSetting = (
-  select: HTMLSelectElement,
-  key: string,
-  apply: (value: string) => void,
-): void => {
+/** 保存偏好。浏览器限制存储时保留本次访问中的选择。 */
+export const saveSetting = (key: string, value: number | string): void => {
   try {
-    const saved = localStorage.getItem(key)
-    if (saved !== null && Array.from(select.options).some((option) => option.value === saved)) {
-      select.value = saved
-    }
+    localStorage.setItem(key, String(value))
   } catch {
-    // 浏览器禁止访问存储时，仍可在当前页面切换选项。
+    // 存储不可用时，当前页面仍能正常使用设置。
   }
-  apply(select.value)
-  select.addEventListener('change', () => {
-    apply(select.value)
-    try {
-      localStorage.setItem(key, select.value)
-    } catch {
-      /* 禁止访问存储时仅在当前页生效 */
-    }
+}
+
+/** 读取滑条保存值，缺失或超出范围时使用初始值。 */
+export const readRangeSetting = (
+  key: string,
+  { min, max, step, initial }: { min: number; max: number; step: number; initial: number },
+): number => {
+  const saved = Number(readSetting(key) ?? NaN)
+  return Number.isFinite(saved) && saved >= min && saved <= max
+    ? min + Math.round((saved - min) / step) * step
+    : initial
+}
+import { reactive, watch } from 'vue'
+import type { createAudio } from './audio.ts'
+
+/** 恢复设置并保存更改，音量和声音开关由音频接口处理。 */
+export const createGameSettings = (audio: ReturnType<typeof createAudio>) => {
+  const savedAntialias = readSetting('kagari.antialias')
+  const antialias =
+    savedAntialias && Object.hasOwn(ANTIALIAS_OPTIONS, savedAntialias)
+      ? (savedAntialias as keyof typeof ANTIALIAS_OPTIONS)
+      : 'fxaa'
+  const state = reactive({
+    panel: null as 'settings' | 'help' | null,
+    isSoundOn: audio.isEnabled,
+    volume: Math.round(audio.volume * 100),
+    sensitivity: readRangeSetting('kagari.sensitivity', CAMERA_RANGES.sensitivity),
+    fov: readRangeSetting('kagari.fov', CAMERA_RANGES.fov),
+    antialias,
   })
+  watch(
+    () => state.volume,
+    (volume) => audio.setVolume(volume / 100),
+  )
+  watch(
+    () => state.sensitivity,
+    (value) => saveSetting('kagari.sensitivity', value),
+  )
+  watch(
+    () => state.fov,
+    (value) => saveSetting('kagari.fov', value),
+  )
+  watch(
+    () => state.antialias,
+    (value) => saveSetting('kagari.antialias', value),
+  )
+  return {
+    state,
+    /** 切换声音并同步按钮状态。 */
+    toggleSound() {
+      state.isSoundOn = audio.toggle()
+    },
+  }
 }

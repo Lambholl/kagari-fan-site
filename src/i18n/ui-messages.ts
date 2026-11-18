@@ -43,7 +43,6 @@ export const uiMessages = {
   viewGithub: ['查看 GitHub 源码', 'GitHubでソースコードを見る'],
   fullscreen: ['全屏', '全画面表示'],
   exitFullscreen: ['退出全屏', '全画面表示を終了'],
-  sound: ['声音开关', 'サウンド切り替え'],
   mute: ['关闭声音', 'サウンドをオフにする'],
   unmute: ['开启声音', 'サウンドをオンにする'],
   settings: ['设置', '設定'],

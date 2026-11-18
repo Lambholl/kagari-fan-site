@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { createApp, watch } from 'vue'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
@@ -17,9 +18,11 @@ import { createKagari } from './kagari/kagari.ts'
 import { createRibbons } from './kagari/ribbons.ts'
 import { createPlayer } from './player.ts'
 import { createItems } from './items.ts'
-import { createUI, createLoadingView } from './ui.ts'
+import { createUI } from './ui.ts'
+import type { GameUiActions } from './ui.ts'
+import GameInterface from './ui/GameInterface.vue'
 import { bindPageLanguage } from './i18n.ts'
-import { bindSelectSetting, bindRangeSetting } from './settings.ts'
+import { createGameSettings } from './settings.ts'
 import { createAudio, preloadBgm } from './audio.ts'
 import { onLoadingProgress, trackLoad, loadingStep, finishLoading } from './loading.ts'
 import { createStory } from './story.ts'
@@ -226,24 +229,25 @@ const boot = async () => {
   const post = { warp: 0, desat: 0, aberr: 0 }
 
   // ———————————————————— 玩法 ————————————————————
-  const tl = createTimeline()
-  const ui = createUI(tl)
-  bindSelectSetting(ui.el.antialias, 'kagari.antialias', (mode) => {
-    taa.enabled = mode === 'taa'
-    taa.reset()
-    smaa.enabled = mode === 'smaa'
-    fxaa.enabled = mode === 'fxaa'
-  })
-  const audio = createAudio()
-  ui.setSound(audio.isEnabled)
-  ui.setVolume(audio.volume)
+  watch(
+    () => settings.state.antialias,
+    (mode) => {
+      taa.enabled = mode === 'taa'
+      taa.reset()
+      smaa.enabled = mode === 'smaa'
+      fxaa.enabled = mode === 'fxaa'
+    },
+    { immediate: true },
+  )
   const items = createItems(camera, scene)
+  const corner = getElement('corner')
   let hasLockedPointer = false
   const player = createPlayer({
     camera,
     dom: display,
     hooks: {
-      inputBlocked: (target) => ui.isSettingsOpen || target === ui.el.settings,
+      inputBlocked: (target) =>
+        settings.state.panel === 'settings' || (target instanceof Node && corner.contains(target)),
       onAction: () => {
         if (!ui.triggerPrompt()) {
           ui.advance()
@@ -272,10 +276,11 @@ const boot = async () => {
     },
   })
   scene.add(player.body)
-  bindRangeSetting(ui.el.sensitivity, 'kagari.sensitivity', (percentage) => {
-    player.setLookSensitivity(percentage / 100)
-    ui.setSensitivityLabel(percentage)
-  })
+  watch(
+    () => settings.state.sensitivity,
+    (percentage) => player.setLookSensitivity(percentage / 100),
+    { immediate: true },
+  )
   const story = createStory({
     ui,
     tl,
@@ -293,40 +298,23 @@ const boot = async () => {
   const startStory = (isFree: boolean) => {
     story.begin(isFree).catch((error) => console.error('进入场景失败', error))
   }
-  ui.el.start.addEventListener('click', () => startStory(false))
-  ui.el.free.addEventListener('click', () => startStory(true))
-  ui.el.pause.addEventListener('click', () => {
+  actions.start = startStory
+  actions.resume = () => {
     ui.setPaused(false)
     player.requestLock()
-  })
-  ui.el.sound.addEventListener('click', () => ui.setSound(audio.toggle()))
-  ui.el.volume.addEventListener('input', () =>
-    ui.setVolume(audio.setVolume(ui.el.volume.valueAsNumber / 100)),
-  )
-  ui.el.act.addEventListener('click', () => {
-    if (!ui.triggerPrompt()) {
-      ui.advance()
-    }
-  })
-  ui.el.sit.addEventListener('click', () => {
+  }
+  actions.toggleSitting = () => {
     if (!player.state.isMoveLocked) {
       player.setSitting(!player.state.isSitting)
     }
-  })
-  ui.el.sub.style.pointerEvents = 'auto'
-  ui.el.sub.addEventListener('click', () => ui.advance())
+  }
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyM') {
-      ui.setSound(audio.toggle())
-    }
     if (e.code === 'Escape' && story.state.mode === 'play') {
       ui.setPaused(true)
     }
   })
-  window.addEventListener('touchstart', () => ui.setTouchMode(), { passive: true, once: true })
 
   // ———————————————————— 尺寸 ————————————————————
-  let landscapeFov = 62
   let appliedZoom = 1
   let isTitleFov = true
   const titleShot = () => (camera.aspect > TITLE_WIDE_ASPECT ? TITLE_SHOTS.wide : TITLE_SHOTS.tall)
@@ -334,6 +322,7 @@ const boot = async () => {
   // 主界面用机位自带的视场角；游戏中用设置值，竖屏画面窄，竖直视场角比设置值多放宽 14°，左右才不至于太窄。
   const applyFov = () => {
     isTitleFov = story.state.mode === 'title'
+    const landscapeFov = settings.state.fov
     let base = window.innerWidth < window.innerHeight ? landscapeFov + 14 : landscapeFov
     if (isTitleFov) {
       base = titleShot().fov
@@ -364,13 +353,15 @@ const boot = async () => {
     applyFov()
   }
   window.addEventListener('resize', resize)
-  bindRangeSetting(ui.el.fov, 'kagari.fov', (degrees) => {
-    landscapeFov = degrees
-    ui.setFovLabel(degrees)
-    resize()
-    // 视场角变了，历史帧与当前画面的投影对不上。
-    taa.reset()
-  })
+  watch(
+    () => settings.state.fov,
+    () => {
+      resize()
+      // 视场角变了，历史帧与当前画面的投影对不上。
+      taa.reset()
+    },
+    { immediate: true },
+  )
 
   // 提前编译场景材质，避免首帧因同步编译卡住数秒；后期处理的着色器仍在首帧编译。
   await loadingStep('compile')
@@ -460,7 +451,6 @@ const boot = async () => {
     frame(t)
     requestAnimationFrame(() => {
       finishLoading()
-      ui.setReady()
       ui.fade(0, 2.2).catch((error) => console.error('淡入场景失败', error))
       const auto = params.get('autostart')
       if (auto) {
@@ -497,8 +487,16 @@ const boot = async () => {
 }
 
 bindPageLanguage()
-const loadingView = createLoadingView()
-const stopLoadingView = onLoadingProgress(loadingView.update)
+const audio = createAudio()
+const settings = createGameSettings(audio)
+const tl = createTimeline()
+const ui = createUI(tl)
+const actions: GameUiActions = {}
+const stopLoadingView = onLoadingProgress((state) => {
+  ui.state.loading = state
+})
+createApp(GameInterface, { ui, settings, actions }).mount(getElement('interface'))
+window.addEventListener('touchstart', ui.setTouchMode, { passive: true, once: true })
 
 // 让进度条先画出来，再开始生成场景
 requestAnimationFrame(() =>
@@ -507,7 +505,7 @@ requestAnimationFrame(() =>
       boot().catch((error) => {
         console.error('场景加载失败', error)
         stopLoadingView()
-        loadingView.fail()
+        ui.state.hasLoadingError = true
         getElement('fade').style.opacity = '0'
       }),
     30,

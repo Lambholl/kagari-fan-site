@@ -15,15 +15,6 @@ export const getElement = ((
   return element
 }) as GetElement
 
-/** 查找容器内必需的 HTML 元素，找不到时抛出错误。 */
-export const getChild = (root: HTMLElement, selector: string): HTMLElement => {
-  const child = root.querySelector(selector)
-  if (!(child instanceof HTMLElement)) {
-    throw new Error(`页面元素 ${selector} 缺失或类型不符`)
-  }
-  return child
-}
-
 /** 获取用于绘制纹理或呈现画面的二维上下文，创建失败时抛出错误。 */
 export const getContext2D = (
   canvas: HTMLCanvasElement,
