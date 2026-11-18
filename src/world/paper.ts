@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { mulberry32 } from '../util/noise.ts'
 import { HILL_TOP, heightAt } from './terrain.ts'
+import { createSurfaceSampler } from './surface.ts'
 import { MOON_DIR } from './sky.ts'
 import { getContext2D } from '../util/dom.ts'
 
@@ -518,6 +519,7 @@ export const createPaper = () => {
   mesh.position.set(sh.cx, HILL_TOP + 0.012, sh.cz)
   mesh.rotation.y = sh.rot
   group.add(mesh)
+  const samplePaper = createSurfaceSampler(mesh, 0.25)
 
   // —— 从纸面浮起的细小光点 ——
   const auraUniforms = { uTime: { value: 0 }, uProj: { value: 900 } }
@@ -588,8 +590,12 @@ export const createPaper = () => {
 
   return {
     group,
-    /** 纸面中心高度（米）。 */
+    /** 角色摆放用的纸面基准高度（米）。 */
     surfaceY: HILL_TOP + 0.02,
+    /** 返回世界坐标 (x, z) 处的纸面高度（米），纸外返回 null。 */
+    heightAt(x: number, z: number): number | null {
+      return samplePaper(x, z)?.height ?? null
+    },
     /** 屏幕高度（像素）除以 2·tan(fov/2)，用于换算飘浮光点的屏幕大小。 */
     /** 设置光点的屏幕投影系数。 */
     setProjection(v: number) {

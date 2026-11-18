@@ -1,6 +1,9 @@
 import * as THREE from 'three'
 
-/** 将裙面调整到跪坐曲面，隐藏原蒙皮裙摆并向 root 添加替代网格（root 须保持单位变换）。 */
+const PAPER_CLEARANCE = 0.005 // 给裙面描边和纸面三角形之间的起伏留出余量（米）。
+const BODY_CLEARANCE = 0.019 // 外裙离臀腿包围面的距离（米）。
+
+/** 将裙面调整到跪坐曲面，并返回贴合纸面的方法。构建时 root 须保持单位变换。 */
 export const drapeSeatedSkirt = (
   root: THREE.Group,
   meshes: THREE.SkinnedMesh[],
@@ -15,7 +18,8 @@ export const drapeSeatedSkirt = (
   const down = new THREE.Vector3(0, -1, 0)
   const origin = new THREE.Vector3()
   const outer: THREE.Mesh[] = []
-  const result = []
+  const skirts: THREE.Mesh[] = []
+  const layers: { skirt: THREE.Mesh; restHeights: Float32Array; isLining: boolean }[] = []
   root.updateMatrixWorld(true)
 
   for (const source of meshes.filter((m) => /kirt|Petticoat|flounce/i.test(m.name))) {
@@ -56,7 +60,7 @@ export const drapeSeatedSkirt = (
       p.lerp(posed, 1 - THREE.MathUtils.smoothstep(v, 0.02, 0.23))
       // 裙褶与外扩会改变水平坐标，按最终位置重新抬高以免膝盖穿透外裙。
       if (!isLining) {
-        p.y = Math.max(p.y, bodyHeight(p.x, p.z) + 0.019)
+        p.y = Math.max(p.y, bodyHeight(p.x, p.z) + BODY_CLEARANCE)
       }
       // 内衬与荷叶边约束在外裙下方，仅超出外裙边缘的部分显露出来。
       if (isLining) {
@@ -82,7 +86,43 @@ export const drapeSeatedSkirt = (
       outer.push(skirt)
     }
     source.visible = false
-    result.push(skirt)
+    skirts.push(skirt)
+    // 保留原始跪坐高度，切换朝向时从同一曲面重新贴合。
+    const restHeights = Float32Array.from({ length: positions.count }, (_, i) => positions.getY(i))
+    layers.push({ skirt, restHeights, isLining })
   }
-  return result
+
+  return {
+    skirts,
+    /** 按 root 当前的位置和绕 Y 轴的朝向，将低处的裙摆贴到纸面的实际起伏上。 */
+    fitToPaper(paperHeightAt: (x: number, z: number) => number | null): void {
+      root.updateWorldMatrix(true, false)
+      for (const { skirt, restHeights, isLining } of layers) {
+        const { geometry } = skirt
+        const positions = geometry.getAttribute('position')
+        for (let i = 0; i < positions.count; i++) {
+          const x = positions.getX(i)
+          const z = positions.getZ(i)
+          const restY = restHeights[i]!
+          p.set(x, 0, z).applyMatrix4(root.matrixWorld)
+          const paperY = paperHeightAt(p.x, p.z)
+          let y = restY
+          if (paperY !== null) {
+            // 低处的布层共用同一个位移，向腰部逐渐减弱，保留贴地裙褶的层次。
+            const floorY = paperY - p.y + PAPER_CLEARANCE
+            const weight = 1 - THREE.MathUtils.smoothstep(restY, 0.025, 0.14)
+            y = Math.max(floorY, restY + floorY * weight)
+            if (!isLining) {
+              y = Math.max(y, bodyHeight(x, z) + BODY_CLEARANCE)
+            }
+          }
+          positions.setY(i, y)
+        }
+        positions.needsUpdate = true
+        geometry.computeVertexNormals()
+        geometry.computeBoundingBox()
+        geometry.computeBoundingSphere()
+      }
+    },
+  }
 }

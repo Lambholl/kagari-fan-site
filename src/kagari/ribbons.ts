@@ -171,18 +171,6 @@ export const createRibbons = (kagari: Awaited<ReturnType<typeof createKagari>>) 
     delay: 0.0,
     noise: makeNoise2D(311),
   }
-  // 将曲线采样点钳制到实际裙面高度之上，避免插值中段穿过布面。
-  const restOnCloth = (points: THREE.Vector3[]) => {
-    for (let i = 1; i < points.length - 1; i++) {
-      const p = points[i]!
-      const y = kagari.clothHeightAt(p.x, p.z)
-      if (y !== null) {
-        p.y = Math.max(p.y, y + 0.01)
-      }
-    }
-    return points
-  }
-  restOnCloth(bridge.calm)
   bridge.strip.setColors((s, c) => c.copy(A).lerp(B, 0.5 - 0.5 * Math.cos(s * Math.PI * 2)))
 
   // —— 从蝴蝶结垂下来的几条长尾 ——
@@ -262,7 +250,7 @@ export const createRibbons = (kagari: Awaited<ReturnType<typeof createKagari>>) 
     return {
       ...d,
       strip,
-      calm: restOnCloth(sampleCurve(pts, strip.n)),
+      calm: sampleCurve(pts, strip.n),
       kind: 'tail',
       rest: w0,
       noise,
@@ -272,7 +260,23 @@ export const createRibbons = (kagari: Awaited<ReturnType<typeof createKagari>>) 
   // 所有缎带共用的阵风强度，约 0.6 至 1.4 倍，缓慢起伏。
   const gustNoise = makeNoise2D(97)
 
-  for (const r of [bridge, ...tails]) {
+  const strips = [bridge, ...tails]
+  const restHeights = strips.map(({ calm }) => calm.map((point) => point.y))
+  /** 以当前裙面为准，更新缎带静止时的曲线高度。 */
+  const fitToSkirt = (): void => {
+    strips.forEach(({ calm }, stripIndex) => {
+      const heights = restHeights[stripIndex]!
+      // 两端沿用原曲线的高度，中间的采样点随裙面升降。
+      for (let i = 1; i < calm.length - 1; i++) {
+        const point = calm[i]!
+        const clothY = kagari.clothHeightAt(point.x, point.z)
+        point.y = clothY === null ? heights[i]! : Math.max(heights[i]!, clothY + 0.01)
+      }
+    })
+  }
+  fitToSkirt()
+
+  for (const r of strips) {
     group.add(r.strip.mesh)
   }
 
@@ -400,5 +404,5 @@ export const createRibbons = (kagari: Awaited<ReturnType<typeof createKagari>>) 
     }
   }
 
-  return { group, update, state: st }
+  return { group, fitToSkirt, update, state: st }
 }

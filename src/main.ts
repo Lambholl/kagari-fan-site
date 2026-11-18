@@ -180,16 +180,18 @@ const boot = async () => {
   kagari.group.position.set(0, paper.surfaceY, 0)
   kagari.group.rotation.y = KAGARI_YAW
   scene.add(kagari.group)
+  kagari.fitSkirtToPaper(paper.heightAt)
   const ribbons = createRibbons(kagari)
   // 手边的补光按篝的局部坐标记下，主界面转动篝时跟着转。
   kagari.group.updateMatrixWorld(true)
   const handLightLocal = kagari.group.worldToLocal(handLight.position.clone())
   let isTitleYaw = false
-  // 主界面与游戏中篝的朝向不同，切换时一并转动手边的补光。
+  // 主界面与游戏中篝的朝向不同，转身后裙摆落在纸面的另一处。
   const applyKagariYaw = (isTitle: boolean) => {
     isTitleYaw = isTitle
     kagari.group.rotation.y = isTitle ? KAGARI_TITLE_YAW : KAGARI_YAW
-    kagari.group.updateMatrixWorld(true)
+    kagari.fitSkirtToPaper(paper.heightAt)
+    ribbons.fitToSkirt()
     handLight.position.copy(handLightLocal)
     kagari.group.localToWorld(handLight.position)
   }

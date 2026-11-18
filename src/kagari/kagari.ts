@@ -631,7 +631,7 @@ export const createKagari = async () => {
       })
     }
   }
-  const seatedSkirt = drapeSeatedSkirt(
+  const { skirts: seatedSkirt, fitToPaper: fitSkirtToPaper } = drapeSeatedSkirt(
     root,
     meshes.filter((mesh) => mesh instanceof THREE.SkinnedMesh),
     skirtPoint,
@@ -651,8 +651,10 @@ export const createKagari = async () => {
   const clothOrigin = new THREE.Vector3()
   const down = V(0, -1, 0)
   const clothHeightAt = (x: number, z: number) => {
-    root.updateMatrixWorld(true)
     root.localToWorld(clothOrigin.set(x, 2, z))
+    for (const mesh of outerSkirt) {
+      mesh.updateWorldMatrix(false, false)
+    }
     clothRay.set(clothOrigin, down)
     const hit = clothRay.intersectObjects(outerSkirt, false)[0]
     return hit ? root.worldToLocal(hit.point).y : null
@@ -946,6 +948,7 @@ export const createKagari = async () => {
     head,
     state,
     seatedSkirt,
+    fitSkirtToPaper,
     clothHeightAt,
     update,
     /** 设置抬头看向主角的目标权重（0 看纸，1 看向主角）。 */
