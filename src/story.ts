@@ -349,10 +349,9 @@ export const createStory = ({
   }
 
   // ———————————————————— 彩蛋：穿模，掉出世界 ————————————————————
-  // 撞树撞死过或穿过树干之后，再撞树时有 CLIP_CHANCE 的概率穿过树干、掉出世界；
-  // 摔死过或穿过崖下地面之后，再摔到会摔死的高度时，同样有 CLIP_CHANCE 的概率穿过地面。
-  // 主角在这里意识到自己身在一个同人游戏里。第一次穿模（不论哪一种）播放完整独白，之后按穿模的种类轮流播放短独白。
+  // 树干和崖下地面各自播放一次完整独白，之后轮流播放各自的短独白。
   const CLIP_CHANCE = 0.25
+  const FIRST_CLIP_ATTEMPT_LIMIT = 3
   const CLIP_LINES = {
     tree: {
       // 穿进树干、开始往下沉的时候
@@ -386,8 +385,7 @@ export const createStory = ({
     after: ['moonLightsTheBack', 'noUseThinking', 'authorLeavesBug'],
   } as const
   const clipCounts = { tree: 0, fall: 0 }
-  // 各种穿模已经播放过的短独白段数，用来轮换。
-  const clipRepeatCounts = { tree: 0, fall: 0 }
+  const firstClipMisses = { tree: 0, fall: 0 }
 
   /** 依次显示独白；带 speaker 的行是说出口的话。 */
   const sayLines = async (lines: readonly NarrationLine[]) => {
@@ -406,7 +404,8 @@ export const createStory = ({
    */
   const clipOutOfWorld = async (kind: ClipKind) => {
     lockForScene(false)
-    const isFirst = clipCounts.tree + clipCounts.fall === 0
+    const previousClips = clipCounts[kind]
+    const isFirst = previousClips === 0
     clipCounts[kind]++
     // 穿过去的一瞬间画面错位一下，色差由逐帧逻辑自己衰减。
     post.aberr = 2.4
@@ -429,7 +428,7 @@ export const createStory = ({
       await turning
     } else {
       const turning = lookUp()
-      await sayLines(lines.repeat[clipRepeatCounts[kind]++ % lines.repeat.length]!)
+      await sayLines(lines.repeat[(previousClips - 1) % lines.repeat.length]!)
       await turning
     }
     await ui.fade(1, 1.6)
@@ -885,9 +884,7 @@ export const createStory = ({
     onTreeCrash() {
       mishapDeath('tree').catch(reportStoryError)
     },
-    /**
-     * 掷骰决定这次撞树或会摔死的落地是否穿模。同一种死法死过或穿模过之后，没有其他场景进行时，按 CLIP_CHANCE 的概率返回 true。
-     */
+    /** 判定这次致命碰撞是否穿模。同类首次正常死亡后，每次尝试有 25% 概率，首次穿模最晚在第三次尝试触发。 */
     shouldClipThrough(kind: ClipKind) {
       if (S.mode !== 'play' || S.isBusy) {
         return false
@@ -895,7 +892,14 @@ export const createStory = ({
       if (mishapCounts[kind] + clipCounts[kind] === 0) {
         return false
       }
-      return Math.random() < CLIP_CHANCE
+      if (Math.random() < CLIP_CHANCE) {
+        return true
+      }
+      if (clipCounts[kind] > 0) {
+        return false
+      }
+      firstClipMisses[kind]++
+      return firstClipMisses[kind] >= FIRST_CLIP_ATTEMPT_LIMIT
     },
     /**
      * 处理玩家穿模掉出世界：边往下掉边播放独白，之后送回出生点。
