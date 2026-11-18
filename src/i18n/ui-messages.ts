@@ -34,7 +34,6 @@ export const uiMessages = {
   modelCredit: ['人物模型来自', 'キャラクターモデル'],
   treeCredit: ['主树改编自', '大樹モデルの改変元'],
   bgmCredit: ['BGM 转载来源：', 'BGMの転載元：'],
-  harpCredit: ['竖琴采样：', 'ハープの音源：'],
   copyright: [
     '《Rewrite》及其角色的著作权归 ©VISUAL ARTS/Key 所有。',
     '『Rewrite』およびそのキャラクターの著作権は ©VISUAL ARTS/Key に帰属します。',

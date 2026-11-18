@@ -23,7 +23,7 @@ import type { GameUiActions } from './ui.ts'
 import GameInterface from './ui/GameInterface.vue'
 import { bindPageLanguage } from './i18n.ts'
 import { createGameSettings } from './settings.ts'
-import { createAudio, preloadBgm } from './audio.ts'
+import { createAudio, preloadBgm, preloadSoundSamples } from './audio.ts'
 import { onLoadingProgress, trackLoad, loadingStep, finishLoading } from './loading.ts'
 import { createStory } from './story.ts'
 import { createTimeline } from './util/timeline.ts'
@@ -174,6 +174,7 @@ const boot = async () => {
     createKagari(),
     // 音乐下载失败不影响进入场景，开启声音时 startBgm 会重新下载。
     preloadBgm().catch((error) => console.warn('背景音乐预加载失败', error)),
+    preloadSoundSamples().catch((error: unknown) => console.warn('场景音效预加载失败', error)),
   ])
   await loadingStep('build')
   const sky = createSky(panorama)

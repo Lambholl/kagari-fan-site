@@ -92,19 +92,6 @@ const loadingLabel = computed(() =>
           rel="noopener noreferrer"
           >YouTube</a
         ><br />
-        {{ t('harpCredit')
-        }}<a
-          href="https://freepats.zenvoid.org/OrchestralStrings/harp.html"
-          target="_blank"
-          rel="noopener noreferrer"
-          >Concert Harp · Versilian Studios / FreePats</a
-        >
-        （<a
-          href="https://creativecommons.org/publicdomain/zero/1.0/"
-          target="_blank"
-          rel="noopener noreferrer"
-          >CC0 1.0</a
-        >）<br />
         {{ t('copyright') }}
       </p>
     </div>

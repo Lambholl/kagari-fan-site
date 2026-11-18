@@ -1,6 +1,7 @@
 import { fetchWithProgress, trackLoad } from './loading.ts'
 
 const BGM_URL = `${import.meta.env.BASE_URL}audio/bgm.m4a`
+const SOUND_SAMPLES = ['tree-hit.mp3', 'land.mp3', 'ribbon-slash.mp3', 'coffee-pour.m4a'] as const
 const BGM_SAMPLE_RATE = 48000
 const BGM_LOOP_START_SECONDS = 1613328 / BGM_SAMPLE_RATE
 const BGM_LOOP_END_SECONDS = 7661016 / BGM_SAMPLE_RATE
@@ -12,6 +13,27 @@ const SOUND_FADE_OUT_SECONDS = 0.6
 const VOLUME_RAMP_SECONDS = 0.12
 
 let bgmData: Promise<ArrayBuffer> | null = null
+type SoundSample = (typeof SOUND_SAMPLES)[number]
+const sampleData: Partial<Record<SoundSample, Promise<ArrayBuffer>>> = {}
+
+const fetchSample = (sound: SoundSample): Promise<ArrayBuffer> => {
+  const url = `${import.meta.env.BASE_URL}audio/${sound}`
+  sampleData[sound] ??= trackLoad((onProgress) => fetchWithProgress(url, onProgress)).catch(
+    (error: unknown) => {
+      delete sampleData[sound]
+      throw new Error(`下载音效失败：${url}`, { cause: error })
+    },
+  )
+  return sampleData[sound]
+}
+
+/**
+ * 预先下载录制的场景音效，并计入首屏进度。
+ * @throws 任一音效下载失败时拒绝。
+ */
+export const preloadSoundSamples = async (): Promise<void> => {
+  await Promise.all(SOUND_SAMPLES.map(fetchSample))
+}
 
 /**
  * 预先下载背景音乐并计入首屏进度；重复调用复用同一次下载，失败后下次调用会重试。
@@ -39,6 +61,7 @@ export const createAudio = () => {
   let tension: GainNode
   let bgmSource: AudioBufferSourceNode | null = null
   let bgmLoading: Promise<void> | null = null
+  const sampleBuffers: Partial<Record<SoundSample, Promise<AudioBuffer>>> = {}
   let isEnabled = true
   let volume = 0.5
   let noiseBuf: AudioBuffer
@@ -102,6 +125,34 @@ export const createAudio = () => {
       })
   }
 
+  const decodeSample = (context: AudioContext, sound: SoundSample): Promise<AudioBuffer> => {
+    sampleBuffers[sound] ??= fetchSample(sound)
+      .then((bytes) => context.decodeAudioData(bytes.slice(0)))
+      .catch((error: unknown) => {
+        delete sampleBuffers[sound]
+        throw new Error(`准备音效失败：${sound}`, { cause: error })
+      })
+    return sampleBuffers[sound]
+  }
+
+  const playSample = (sound: SoundSample, gain: number, delay = 0) => {
+    const context = ctx
+    if (!context) {
+      return
+    }
+    const when = context.currentTime + delay
+    decodeSample(context, sound)
+      .then((buffer) => {
+        const source = context.createBufferSource()
+        source.buffer = buffer
+        const level = context.createGain()
+        level.gain.value = gain
+        source.connect(level).connect(master)
+        source.start(when)
+      })
+      .catch((error: unknown) => console.warn('播放音效失败', error))
+  }
+
   /**
    * 创建音乐和音效资源；重复调用复用已创建的资源。
    */
@@ -119,6 +170,9 @@ export const createAudio = () => {
     master.gain.value = isEnabled ? volume * MASTER_MAX_GAIN : 0
     master.connect(ctx.destination)
     startBgm(ctx)
+    for (const sound of SOUND_SAMPLES) {
+      decodeSample(ctx, sound).catch((error: unknown) => console.warn(error))
+    }
 
     // 简易混响：两条互相反馈的延迟线
     wet = ctx.createGain()
@@ -198,7 +252,6 @@ export const createAudio = () => {
   }
 
   const noise = ({
-    when = 0,
     dur = 0.3,
     type = 'bandpass',
     f0 = 1000,
@@ -207,7 +260,6 @@ export const createAudio = () => {
     gain = 0.2,
     attack = 0.01,
   }: {
-    when?: number
     dur?: number
     type?: BiquadFilterType
     f0?: number
@@ -219,7 +271,7 @@ export const createAudio = () => {
     if (!ctx) {
       return
     }
-    const t = ctx.currentTime + when
+    const t = ctx.currentTime
     const src = ctx.createBufferSource()
     src.buffer = noiseBuf
     src.loop = true
@@ -306,13 +358,14 @@ export const createAudio = () => {
     },
     /**
      * 调整紧张音效的强度。
-     * @param v - 强度，取 0 至 1。
+     * @param strength - 强度，取 0 至 1。
+     * @param timeConstant - 音量变化的时间常数，单位为秒。
      */
-    setTension(v: number) {
+    setTension(strength: number, timeConstant = 0.6) {
       if (!ctx) {
         return
       }
-      tension.gain.setTargetAtTime(v * 0.12, ctx.currentTime, 0.6)
+      tension.gain.setTargetAtTime(strength * 0.12, ctx.currentTime, timeConstant)
     },
     /**
      * 播放脚步音效。
@@ -332,81 +385,21 @@ export const createAudio = () => {
       }
     },
     /**
-     * 播放从高处落到草地上的音效：低沉的闷响加上压倒草叶的沙沙声。
-     * @param strength - 0 至 1，按落地速度换算，1 为摔死的力度。
+     * 按落地力度播放闷响。
+     * @param strength - 按落地速度换算，0 及以下静音，1 及以上使用最大音量。
      */
     land(strength: number) {
-      if (!ctx || strength <= 0) {
+      if (strength <= 0) {
         return
       }
-      const s = Math.min(1, strength)
-      noise({
-        dur: 0.18 + 0.4 * s,
-        type: 'lowpass',
-        f0: 380,
-        f1: 45,
-        q: 1.2,
-        gain: 0.15 + 0.45 * s,
-        attack: 0.004,
-      })
-      noise({
-        dur: 0.12 + 0.2 * s,
-        type: 'bandpass',
-        f0: 1400,
-        f1: 500,
-        q: 0.9,
-        gain: 0.04 + 0.1 * s,
-        attack: 0.003,
-      })
-      // 身体撞上地面的低频冲击：正弦波从 90 赫兹快速降到 35 赫兹。
-      const t = ctx.currentTime
-      const o = ctx.createOscillator()
-      o.type = 'sine'
-      o.frequency.setValueAtTime(90, t)
-      o.frequency.exponentialRampToValueAtTime(35, t + 0.25)
-      const g = ctx.createGain()
-      g.gain.setValueAtTime(0, t)
-      g.gain.linearRampToValueAtTime(0.5 * s, t + 0.005)
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35)
-      o.connect(g).connect(master)
-      o.start(t)
-      o.stop(t + 0.4)
+      playSample('land.mp3', Math.min(1, strength) * 0.7)
     },
     /**
      * 播放全速撞上树干的音效：木头的闷响加上身体倒地的冲击。
      */
     treeHit() {
-      if (!ctx) {
-        return
-      }
-      const t = ctx.currentTime
-      // 粗树干被撞时短促的低音：三角波从 170 赫兹略降，很快衰减。
-      const o = ctx.createOscillator()
-      o.type = 'triangle'
-      o.frequency.setValueAtTime(170, t)
-      o.frequency.exponentialRampToValueAtTime(120, t + 0.18)
-      const g = ctx.createGain()
-      g.gain.setValueAtTime(0, t)
-      g.gain.linearRampToValueAtTime(0.45, t + 0.003)
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22)
-      o.connect(g)
-      g.connect(master)
-      g.connect(wet)
-      o.start(t)
-      o.stop(t + 0.25)
-      noise({ dur: 0.12, type: 'bandpass', f0: 900, f1: 500, q: 2.5, gain: 0.3, attack: 0.002 })
-      // 树叶被震得沙沙作响，然后人倒在草地上。
-      noise({
-        when: 0.05,
-        dur: 1.4,
-        type: 'highpass',
-        f0: 2800,
-        f1: 2000,
-        q: 0.6,
-        gain: 0.05,
-        attack: 0.08,
-      })
-      setTimeout(() => this.land(0.7), 450)
+      playSample('tree-hit.mp3', 0.65)
+      playSample('land.mp3', 0.35, 0.45)
     },
     /**
      * 播放缎带扬起时的渐强音效。
@@ -421,20 +414,10 @@ export const createAudio = () => {
       noise({ dur: 0.35, type: 'highpass', f0: 3200, f1: 5200, q: 1, gain: 0.08, attack: 0.02 })
     },
     /**
-     * 播放缎带挥斩和撞击的音效。
+     * 播放缎带划过空气的音效。
      */
     slash() {
-      noise({ dur: 0.28, type: 'highpass', f0: 1500, f1: 7000, q: 0.8, gain: 0.4, attack: 0.004 })
-      noise({
-        when: 0.06,
-        dur: 0.6,
-        type: 'lowpass',
-        f0: 420,
-        f1: 60,
-        q: 1,
-        gain: 0.5,
-        attack: 0.01,
-      })
+      playSample('ribbon-slash.mp3', 0.58)
     },
     /**
      * 播放被缎带弹开时的音效。
@@ -475,10 +458,10 @@ export const createAudio = () => {
       noise({ dur: 0.5, type: 'bandpass', f0: 4000, f1: 300, q: 4, gain: 0.12 })
     },
     /**
-     * 播放倒水音效。
+     * 播放倒咖啡入杯的音效。
      */
     pour() {
-      noise({ dur: 1.1, type: 'bandpass', f0: 900, f1: 1900, q: 6, gain: 0.07, attack: 0.15 })
+      playSample('coffee-pour.m4a', 0.8)
     },
     /**
      * 播放逐渐升高的铃声音效。
