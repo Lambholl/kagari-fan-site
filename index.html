@@ -7,12 +7,16 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
     <meta name="theme-color" content="#050a1c" />
-    <meta name="description" content="篝：走上开满雏菊的山丘，去见在巨大用纸上演算的月之少女。" />
-    <title>月光散步 · 篝</title>
+    <meta
+      name="description"
+      content="篝：走上开满雏菊的山丘，去见在巨大用纸上演算的月之少女。"
+      data-i18n-content="pageDescription"
+    />
+    <title data-i18n="pageTitle">月光散步 · 篝</title>
     <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body>
-    <div id="app" aria-label="三维场景"></div>
+    <div id="app" aria-label="三维场景" data-i18n-label="scene"></div>
 
     <div id="fade"></div>
     <div id="flash"></div>
@@ -29,7 +33,7 @@
       <div id="joystick" hidden><i></i></div>
       <button id="btn-act" type="button" hidden></button>
       <button id="btn-sit" type="button" hidden>坐下</button>
-      <div id="pause" hidden><span>点击画面继续</span></div>
+      <div id="pause" hidden><span data-i18n="resume">点击画面继续</span></div>
     </div>
 
     <div id="card" hidden>
@@ -40,16 +44,27 @@
     <section id="title">
       <div class="title-inner">
         <p class="eyebrow">Rewrite ── Moon</p>
-        <h1><span>月</span><span>王</span><span>篝</span><span>键</span></h1>
-        <p class="lead">篝<small>Kagari</small></p>
-        <p class="desc">
-          睡不着的夜晚，开满黑白雏菊的山丘。<br />
-          山顶铺着大得难以置信的纸，一位少女伏在上面，演算着什么。
+        <h1>
+          <span>月</span><span>王</span><span>篝</span
+          ><span data-i18n="titleLastCharacter">键</span>
+        </h1>
+        <p class="lead">
+          <small data-i18n="creators">Present by Lambholl &amp;&amp; qpyiu123</small>
+        </p>
+        <p class="desc" id="intro">
+          <span data-i18n="introNight">睡不着的夜晚，开满黑白雏菊的山丘。</span><br />
+          <span data-i18n="introPaper"
+            >山顶铺着大得难以置信的纸，一位少女伏在上面，演算着什么。</span
+          >
+        </p>
+        <p class="desc" id="loading-error" data-i18n="loadingFailureHint" hidden>
+          请检查本地场景素材是否齐全，重启开发服务器后刷新页面。
         </p>
         <div
           id="loading"
           role="progressbar"
           aria-label="场景加载进度"
+          data-i18n-label="loadingProgress"
           aria-valuemin="0"
           aria-valuemax="100"
           aria-valuenow="0"
@@ -60,21 +75,23 @@
           </p>
         </div>
         <div class="actions" hidden>
-          <button id="btn-start" type="button" disabled>走上山丘</button>
+          <button id="btn-start" type="button" data-i18n="start" disabled>走上山丘</button>
           <button id="btn-free" type="button" class="ghost" disabled>
-            自由漫步<small>跳过剧情</small>
+            <span data-i18n="freeRoam">自由漫步</span><small data-i18n="skipStory">跳过剧情</small>
           </button>
         </div>
         <ul class="keys">
-          <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 行走</li>
-          <li><kbd>鼠标</kbd> 环视</li>
-          <li><kbd>E</kbd> 交互</li>
-          <li><kbd>C</kbd> 坐下</li>
-          <li><kbd>X</kbd> 放大</li>
-          <li class="touch-only">左半屏摇杆 · 右半屏环视</li>
+          <li>
+            <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <span data-i18n="move">行走</span>
+          </li>
+          <li><kbd data-i18n="mouse">鼠标</kbd> <span data-i18n="look">环视</span></li>
+          <li><kbd>E</kbd> <span data-i18n="interact">交互</span></li>
+          <li><kbd>C</kbd> <span data-i18n="sit">坐下</span></li>
+          <li><kbd>X</kbd> <span data-i18n="zoom">放大</span></li>
+          <li class="touch-only" data-i18n="touchControls">左半屏摇杆 · 右半屏环视</li>
         </ul>
         <p class="legal">
-          人物模型来自
+          <span data-i18n="modelCredit">人物模型来自</span>
           <a
             href="https://github.com/qpyiu123/Patchouli-model-warehouse"
             target="_blank"
@@ -84,7 +101,7 @@
           （<a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener"
             >CC BY-SA 4.0</a
           >）<br />
-          主树改编自
+          <span data-i18n="treeCredit">主树改编自</span>
           <a
             href="https://sketchfab.com/3d-models/200-year-old-oak-tree-337641cb274845b39f7944aa880ff686"
             target="_blank"
@@ -94,13 +111,15 @@
           （<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener"
             >CC BY 4.0</a
           >）<br />
-          BGM 转载来源：<a
+          <span data-i18n="bgmCredit">BGM 转载来源：</span
+          ><a
             href="https://www.youtube.com/watch?v=0RwhROC7yfU"
             target="_blank"
             rel="noopener noreferrer"
             >YouTube</a
           ><br />
-          竖琴采样：<a
+          <span data-i18n="harpCredit">竖琴采样：</span
+          ><a
             href="https://freepats.zenvoid.org/OrchestralStrings/harp.html"
             target="_blank"
             rel="noopener noreferrer"
@@ -112,7 +131,7 @@
             rel="noopener noreferrer"
             >CC0 1.0</a
           >）<br />
-          《Rewrite》及其角色的著作权归 ©VISUAL ARTS/Key 所有。
+          <span data-i18n="copyright">《Rewrite》及其角色的著作权归 ©VISUAL ARTS/Key 所有。</span>
         </p>
       </div>
     </section>
@@ -126,6 +145,8 @@
           rel="noopener noreferrer"
           title="查看 GitHub 源码"
           aria-label="GitHub 源码"
+          data-i18n-title="viewGithub"
+          data-i18n-label="github"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
@@ -138,6 +159,8 @@
           type="button"
           title="全屏"
           aria-label="全屏"
+          data-i18n-title="fullscreen"
+          data-i18n-label="fullscreen"
           aria-pressed="false"
           hidden
         >
@@ -148,12 +171,23 @@
             <path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" />
           </svg>
         </button>
-        <button id="btn-sound" type="button" title="声音开关" aria-label="声音开关">♪</button>
+        <button
+          id="btn-sound"
+          type="button"
+          title="声音开关"
+          aria-label="声音开关"
+          data-i18n-title="sound"
+          data-i18n-label="sound"
+        >
+          ♪
+        </button>
         <button
           id="btn-settings"
           type="button"
           title="设置"
           aria-label="设置"
+          data-i18n-title="settings"
+          data-i18n-label="settings"
           aria-controls="settings"
           aria-expanded="false"
         >
@@ -164,6 +198,8 @@
           type="button"
           title="操作说明"
           aria-label="操作说明"
+          data-i18n-title="help"
+          data-i18n-label="help"
           aria-controls="help"
           aria-expanded="false"
           hidden
@@ -172,8 +208,13 @@
         </button>
       </div>
       <section id="settings" aria-labelledby="settings-title" hidden>
-        <h2 id="settings-title">设置</h2>
-        <label for="volume">音量</label>
+        <h2 id="settings-title" data-i18n="settings">设置</h2>
+        <label for="language" data-i18n="language">语言</label>
+        <select id="language">
+          <option value="zh-CN" lang="zh-CN" selected>简体中文</option>
+          <option value="ja" lang="ja">日本語</option>
+        </select>
+        <label for="volume" data-i18n="volume">音量</label>
         <div class="range-control">
           <input
             id="volume"
@@ -186,7 +227,7 @@
           />
           <output id="volume-value" for="volume">50%</output>
         </div>
-        <label for="sensitivity">视角灵敏度</label>
+        <label for="sensitivity" data-i18n="sensitivity">视角灵敏度</label>
         <div class="range-control">
           <input
             id="sensitivity"
@@ -199,26 +240,37 @@
           />
           <output id="sensitivity-value" for="sensitivity">100%</output>
         </div>
-        <label for="fov">视场角</label>
+        <label for="fov" data-i18n="fov">视场角</label>
         <div class="range-control">
           <input id="fov" type="range" min="50" max="90" step="1" value="62" aria-valuetext="62°" />
           <output id="fov-value" for="fov">62°</output>
         </div>
-        <label for="antialias">抗锯齿</label>
+        <label for="antialias" data-i18n="antialias">抗锯齿</label>
         <select id="antialias" aria-describedby="antialias-hint">
-          <option value="off">关闭</option>
-          <option value="fxaa" selected>快捷（FXAA）</option>
-          <option value="smaa">精细（SMAA）</option>
-          <option value="taa">稳像（TAA）</option>
+          <option value="off" data-i18n="aaOff">关闭</option>
+          <option value="fxaa" data-i18n="aaFxaa" selected>快捷（FXAA）</option>
+          <option value="smaa" data-i18n="aaSmaa">精细（SMAA）</option>
+          <option value="taa" data-i18n="aaTaa">稳像（TAA）</option>
         </select>
-        <p id="antialias-hint">走动时花草闪动明显，可试稳像档；如果觉得有拖影，切回精细档。</p>
+        <p id="antialias-hint" data-i18n="aaHint">
+          走动时花草闪动明显，可试稳像档；如果觉得有拖影，切回精细档。
+        </p>
       </section>
       <div id="help" hidden>
-        <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 行走　<kbd>Shift</kbd> 奔跑</p>
-        <p><kbd>鼠标</kbd> 环视　<kbd>C</kbd> 坐下 / 起身</p>
-        <p><kbd>E</kbd> 行动　<kbd>空格</kbd> 推进文字</p>
-        <p><kbd>X</kbd> 按住放大，滚轮调节倍率</p>
-        <p><kbd>Esc</kbd> 释放鼠标</p>
+        <p>
+          <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <span data-i18n="move">行走</span>　
+          <kbd>Shift</kbd> <span data-i18n="run">奔跑</span>
+        </p>
+        <p>
+          <kbd data-i18n="mouse">鼠标</kbd> <span data-i18n="look">环视</span>　 <kbd>C</kbd>
+          <span data-i18n="sitOrStand">坐下 / 起身</span>
+        </p>
+        <p>
+          <kbd>E</kbd> <span data-i18n="act">行动</span>　 <kbd data-i18n="space">空格</kbd>
+          <span data-i18n="advance">推进文字</span>
+        </p>
+        <p><kbd>X</kbd> <span data-i18n="zoomHelp">按住放大，滚轮调节倍率</span></p>
+        <p><kbd>Esc</kbd> <span data-i18n="releaseMouse">释放鼠标</span></p>
       </div>
     </div>
 

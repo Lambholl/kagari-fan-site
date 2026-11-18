@@ -1,17 +1,19 @@
 // DOM 层：字幕、提示、章节卡、黑场与闪白。
 
 import type { LoadingState } from './loading.ts'
+import { onLocaleChange, translate } from './i18n.ts'
+import type { StoryMessageKey } from './i18n.ts'
 import type { createTimeline } from './util/timeline.ts'
 import { getElement as $, getChild } from './util/dom.ts'
 
 interface SubtitleOptions {
-  speaker?: string
+  speaker?: StoryMessageKey
   hasGlyphEffect?: boolean
   hold?: number
 }
 
 /** 一行旁白或带说话人和字效的台词。 */
-export type NarrationLine = string | (SubtitleOptions & { text: string })
+export type NarrationLine = StoryMessageKey | (SubtitleOptions & { text: StoryMessageKey })
 
 type PromptHandler = () => Promise<void>
 
@@ -27,13 +29,18 @@ interface WebKitFullscreenElement extends HTMLElement {
 
 /**
  * 绑定标题画面的加载进度条。
- * @returns update 刷新进度和阶段说明；fail 把进度条标成失败并显示 message。
+ * @returns update 刷新进度和阶段说明；fail 显示加载错误和处理提示。
  */
 export const createLoadingView = () => {
   const root = $('loading')
   const bar = getChild(root, '.loading-track i')
   const label = getChild(root, '.loading-label')
   const percent = getChild(root, '.loading-percent')
+  const showFailure = () => {
+    const message = translate('loadingFailed')
+    label.textContent = message
+    root.setAttribute('aria-valuetext', message)
+  }
   return {
     update({ value, label: text }: LoadingState) {
       const rounded = Math.floor(value * 100)
@@ -43,11 +50,13 @@ export const createLoadingView = () => {
       root.setAttribute('aria-valuenow', String(rounded))
       root.setAttribute('aria-valuetext', `${text} ${rounded}%`)
     },
-    fail(message: string) {
+    fail() {
       root.classList.add('failed')
-      label.textContent = message
       percent.textContent = ''
-      root.setAttribute('aria-valuetext', message)
+      $('intro').hidden = true
+      $('loading-error').hidden = false
+      showFailure()
+      onLocaleChange(showFailure)
     },
   }
 }
@@ -76,6 +85,7 @@ export const createUI = (timeline: ReturnType<typeof createTimeline>) => {
     sound: $('btn-sound'),
     settings: $('btn-settings'),
     settingsBox: $('settings'),
+    language: $('language', HTMLSelectElement),
     volume: $('volume', HTMLInputElement),
     volumeValue: $('volume-value'),
     sensitivity: $('sensitivity', HTMLInputElement),
@@ -95,23 +105,37 @@ export const createUI = (timeline: ReturnType<typeof createTimeline>) => {
   let sayToken = 0
   let shouldSkip = false
   let isSpeaking = false
+  let refreshSubtitle: (() => void) | null = null
   const queue: Exclude<NarrationLine, string>[] = []
   let isQueueRunning = false
 
-  /** 显示一行字幕并等它读完；hold 为停留秒数，glyph 启用抖动字效。 */
-  const say = async (text: string, o: SubtitleOptions = {}) => {
+  /** 显示一行字幕并等待结束。hold 为停留秒数，hasGlyphEffect 启用抖动字效。 */
+  const say = async (text: StoryMessageKey, o: SubtitleOptions = {}) => {
     const token = ++sayToken
     isSpeaking = true
     shouldSkip = false
     el.sub.hidden = false
     el.sub.classList.toggle('glyph', !!o.hasGlyphEffect)
-    el.speaker.textContent = o.speaker ? `【${o.speaker}】` : ''
+    const syncSpeaker = () => {
+      el.speaker.textContent = o.speaker ? `【${translate(o.speaker)}】` : ''
+    }
+    syncSpeaker()
     el.text.textContent = ''
     // 打字机
-    const chars = [...text]
+    let chars = [...translate(text)]
     let shown = 0
     let acc = 0
     const cps = 34
+    const showCharacters = (count: number) => {
+      shown = count
+      el.text.textContent = chars.slice(0, shown).join('')
+    }
+    refreshSubtitle = () => {
+      const wasComplete = shown === chars.length
+      chars = [...translate(text)]
+      syncSpeaker()
+      showCharacters(wasComplete ? chars.length : Math.min(shown, chars.length))
+    }
     await timeline.until((dt) => {
       if (token !== sayToken) {
         return true
@@ -119,8 +143,7 @@ export const createUI = (timeline: ReturnType<typeof createTimeline>) => {
       acc += dt
       const want = shouldSkip ? chars.length : Math.min(chars.length, Math.floor(acc * cps))
       if (want !== shown) {
-        shown = want
-        el.text.textContent = chars.slice(0, shown).join('')
+        showCharacters(want)
       }
       if (shown >= chars.length) {
         shouldSkip = false
@@ -143,6 +166,7 @@ export const createUI = (timeline: ReturnType<typeof createTimeline>) => {
       return
     }
     isSpeaking = false
+    refreshSubtitle = null
     el.sub.hidden = true
   }
 
@@ -171,6 +195,7 @@ export const createUI = (timeline: ReturnType<typeof createTimeline>) => {
     queue.length = 0
     sayToken++
     isSpeaking = false
+    refreshSubtitle = null
     el.sub.hidden = true
   }
 
@@ -188,9 +213,13 @@ export const createUI = (timeline: ReturnType<typeof createTimeline>) => {
     node.classList.add('on')
   }
 
-  const card = async (title: string, sub = '', seconds = 3.2) => {
-    el.cardH.textContent = title
-    el.cardP.textContent = sub
+  let refreshCard: (() => void) | null = null
+  const card = async (title: StoryMessageKey, sub: StoryMessageKey | null, seconds = 3.2) => {
+    refreshCard = () => {
+      el.cardH.textContent = translate(title)
+      el.cardP.textContent = sub ? translate(sub) : ''
+    }
+    refreshCard()
     el.card.hidden = false
     void el.card.offsetWidth
     el.card.classList.add('on')
@@ -200,14 +229,15 @@ export const createUI = (timeline: ReturnType<typeof createTimeline>) => {
     el.card.hidden = true
   }
 
+  let activePrompt: StoryMessageKey | null = null
   let promptHandler: PromptHandler | null = null
-  const setPrompt = (text: string | null, handler: PromptHandler | null = null) => {
-    promptHandler = text ? handler : null
-    if (!text) {
+  const syncPrompt = () => {
+    if (!activePrompt) {
       el.prompt.hidden = true
       el.act.hidden = true
       return
     }
+    const text = translate(activePrompt)
     if (el.promptText.textContent !== text) {
       el.promptText.textContent = text
     }
@@ -217,6 +247,11 @@ export const createUI = (timeline: ReturnType<typeof createTimeline>) => {
       el.act.hidden = false
       el.prompt.hidden = true
     }
+  }
+  const setPrompt = (key: StoryMessageKey | null, handler: PromptHandler | null = null) => {
+    activePrompt = key
+    promptHandler = key ? handler : null
+    syncPrompt()
   }
 
   // iPhone 上的 Safari 等不支持网页全屏，这时不显示全屏按钮。
@@ -229,7 +264,7 @@ export const createUI = (timeline: ReturnType<typeof createTimeline>) => {
   const syncFullscreen = () => {
     const isFullscreen = Boolean(fullscreenElement())
     el.fullscreen.setAttribute('aria-pressed', String(isFullscreen))
-    const label = isFullscreen ? '退出全屏' : '全屏'
+    const label = translate(isFullscreen ? 'exitFullscreen' : 'fullscreen')
     el.fullscreen.title = label
     el.fullscreen.setAttribute('aria-label', label)
   }
@@ -255,6 +290,7 @@ export const createUI = (timeline: ReturnType<typeof createTimeline>) => {
     isTouch = true
     el.sit.hidden = false
     el.fullscreen.hidden = !canFullscreen
+    syncPrompt()
   }
   // 手机端标题画面就要能全屏，不必等到第一次触摸。
   if (window.matchMedia('(pointer: coarse)').matches) {
@@ -272,7 +308,7 @@ export const createUI = (timeline: ReturnType<typeof createTimeline>) => {
   el.settings.addEventListener('click', () => {
     showPanel(el.settingsBox.hidden ? 'settings' : null)
     if (!el.settingsBox.hidden) {
-      el.volume.focus()
+      el.language.focus()
     }
   })
   document.addEventListener('keydown', (e) => {
@@ -294,7 +330,11 @@ export const createUI = (timeline: ReturnType<typeof createTimeline>) => {
     }
   })
 
-  return {
+  let activeTag: StoryMessageKey | null = null
+  let deaths = 0
+  let isSoundOn: boolean | null = null
+  let isSitting = false
+  const ui = {
     el,
     get isSettingsOpen() {
       return !el.settingsBox.hidden
@@ -327,12 +367,14 @@ export const createUI = (timeline: ReturnType<typeof createTimeline>) => {
       }
       return false
     },
-    setTag(text: string) {
-      el.tag.textContent = text
+    setTag(key: StoryMessageKey) {
+      activeTag = key
+      el.tag.textContent = translate(key)
     },
     setConverge(n: number) {
+      deaths = n
       el.converge.hidden = n <= 0
-      el.converge.textContent = `再收束 × ${n}`
+      el.converge.textContent = translate('convergeCount', n)
     },
     /** 显示或隐藏游戏 HUD；操作说明按钮随 HUD 一起显示，标题画面已列出按键所以不显示。 */
     showHud(isVisible: boolean) {
@@ -359,10 +401,12 @@ export const createUI = (timeline: ReturnType<typeof createTimeline>) => {
       el.pause.hidden = !isPaused
     },
     setSound(isOn: boolean) {
+      isSoundOn = isOn
       el.sound.classList.toggle('off', !isOn)
       el.sound.setAttribute('aria-pressed', String(isOn))
-      el.sound.setAttribute('aria-label', isOn ? '关闭声音' : '开启声音')
-      el.sound.title = isOn ? '关闭声音' : '开启声音'
+      const label = translate(isOn ? 'mute' : 'unmute')
+      el.sound.setAttribute('aria-label', label)
+      el.sound.title = label
     },
     /**
      * 显示音量滑条和百分比。
@@ -402,8 +446,25 @@ export const createUI = (timeline: ReturnType<typeof createTimeline>) => {
         el.joyKnob.style.transform = `translate(${dx}px, ${dy}px)`
       }
     },
-    setSitLabel(isSitting: boolean) {
-      el.sit.textContent = isSitting ? '起身' : '坐下'
+    setSitLabel(shouldSit: boolean) {
+      isSitting = shouldSit
+      el.sit.textContent = translate(isSitting ? 'stand' : 'sit')
     },
   }
+  ui.setSitLabel(false)
+  onLocaleChange(() => {
+    refreshSubtitle?.()
+    refreshCard?.()
+    syncPrompt()
+    syncFullscreen()
+    if (activeTag) {
+      ui.setTag(activeTag)
+    }
+    ui.setConverge(deaths)
+    if (isSoundOn !== null) {
+      ui.setSound(isSoundOn)
+    }
+    ui.setSitLabel(isSitting)
+  })
+  return ui
 }

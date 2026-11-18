@@ -11,6 +11,7 @@ import type { createSky } from './world/sky.ts'
 import type { createItems } from './items.ts'
 import type { createAudio } from './audio.ts'
 import type { createTimeline } from './util/timeline.ts'
+import type { StoryMessageKey } from './i18n.ts'
 
 type HandSide = ReturnType<Awaited<ReturnType<typeof createKagari>>['nearerSide']>
 
@@ -119,7 +120,7 @@ export const createStory = ({
     })
   }
 
-  const timeSkip = async (lines: readonly string[]) => {
+  const timeSkip = async (lines: readonly StoryMessageKey[]) => {
     await ui.fade(0.5, 1.0)
     const dur = 5.2
     const lapse = tl.tween(dur, (_k, raw) => sky.setLapse(Math.sin(raw * Math.PI) ** 2), linear)
@@ -185,33 +186,26 @@ export const createStory = ({
       items.setThermos(true)
       items.setFull(true)
       items.setPose('hold')
-      ui.setTag('自由漫步')
+      ui.setTag('freeRoam')
       player.requestLock()
       await tl.wait(1.2)
-      ui.narrate([
-        '从时间里脱落的夜晚。月亮只要还挂在天上，这个夜晚就不会结束。',
-        '她已经容许我待在身边。走到纸上去也没关系。',
-      ])
+      ui.narrate(['freeRoamNight', 'freeRoamPermission'])
       return
     }
     player.teleport(SPAWN.x, SPAWN.z, SPAWN.yaw, SPAWN.pitch)
-    ui.setTag('月光散步')
+    ui.setTag('moonwalk')
     player.requestLock()
-    ui.card('月光散步', '', 2.4).catch(reportStoryError)
+    ui.card('moonwalk', null, 2.4).catch(reportStoryError)
     await tl.wait(2.2)
-    ui.narrate([
-      { text: '……睡不着的夜晚。不，是不需要入睡的夜晚。', speaker: '瑚太朗' },
-      '要去的地方，好像早就定下了。山丘——该到那座山丘上去。',
-      '明明是深夜，却亮得出奇。巨大的月亮，用没有温度的光照着世界。',
-    ])
+    ui.narrate([{ text: 'sleeplessNight', speaker: 'kotarou' }, 'headedForHill', 'brightMidnight'])
   }
 
   // ———————————————————— 死亡与再收束 ————————————————————
   const DEATH_LINES = [
-    ['踩上纸面的一瞬间，所有的缎带同时化作了利刃。', '看来，“踩纸”这件事本身就会被当成敌意。'],
-    ['换成光脚踩上去试试——还是不行。', '被搅乱的水中月，又一次映回了水面。'],
-    ['视野裂成了几片。……已经有点习惯了。', '散开一次，再收束一次。仅此而已。'],
-  ]
+    ['ribbonsTurnToBlades', 'paperAsHostility'],
+    ['barefootAttempt', 'moonReflectedAgain'],
+    ['visionShatters', 'scatterAndConverge'],
+  ] as const
 
   const die = async () => {
     if (S.isBusy) {
@@ -250,10 +244,10 @@ export const createStory = ({
     audio.setTension(0)
     kagari.setLook(0, 9)
     if (isFirst) {
-      await ui.say('有什么未知的东西，翻卷而起。')
-      await ui.say('天空在旋转。脚下的山丘上，倒着一具没有头的身体——是我的。')
-      await ui.say('……没关系。映在水面的月亮，就算被搅乱，也会立刻复原。', { speaker: '瑚太朗' })
-      await ui.say('只要月亮，还没有从夜空里消失。')
+      await ui.say('somethingUnfurls')
+      await ui.say('headlessBody')
+      await ui.say('moonReforms', { speaker: 'kotarou' })
+      await ui.say('whileMoonRemains')
     } else {
       const lines = DEATH_LINES[(S.deaths - 2) % DEATH_LINES.length]!
       for (const l of lines) {
@@ -268,14 +262,10 @@ export const createStory = ({
     await ui.fade(0, 1.6)
     unlock()
     if (isFirst) {
-      ui.setTag('少女篝')
-      ui.card('少女篝', '', 2.2).catch(reportStoryError)
+      ui.setTag('girlKagari')
+      ui.card('girlKagari', null, 2.2).catch(reportStoryError)
       await tl.wait(2.4)
-      ui.narrate([
-        '于是，夜晚再度来临。明亮的，带着一点温度的夜。',
-        '去见她。此刻的我，执着的只剩下这一件事。',
-        '这一次，停在纸的外面——不要踩上去。',
-      ])
+      ui.narrate(['nightReturns', 'seeHerAgain', 'stayOffPaper'])
     }
   }
 
@@ -285,36 +275,36 @@ export const createStory = ({
   const MISHAPS = {
     fall: {
       first: [
-        '脚下忽然一空。',
-        '……啊。这里，是悬崖来着。',
-        '风声灌满了耳朵。月亮在视野里翻了个跟头。',
-        '着地的瞬间，我听见了自己碎掉的声音。',
-        '仰面躺在崖下。月亮正好挂在视野的正中，和刚才一样，没有温度地亮着。',
-        '没有缎带，也没有敌意。只是单纯地，一脚踩空。',
-        '就算已经习惯了死，这也是相当没有出息的一种死法。',
+        'footingGivesWay',
+        'rememberCliff',
+        'windAndTumblingMoon',
+        'shatteringOnImpact',
+        'beneathCliff',
+        'simpleMisstep',
+        'undignifiedFall',
       ],
       repeat: [
-        ['又一次，从山丘的边缘迈了出去。', '重力倒是一视同仁。不管是人，还是映在水里的月亮。'],
-        ['下坠的时间比想象中长。长到足够反省。', '……反省的结论是：走路要看脚下。'],
-        ['死因：失足。连说出口都嫌丢人。', '散开，再收束。崖下的雏菊，大概已经认得我了。'],
+        ['offTheEdgeAgain', 'gravityForEveryone'],
+        ['timeToReflect', 'watchYourStep'],
+        ['deathByMisstep', 'daisiesRecognizeMe'],
       ],
     },
     tree: {
       first: [
-        '迎面而来的，是一整面树皮。',
-        '……啊。这棵树，刚才就在那里来着。',
-        '额头先撞了上去。很结实的声音。不是树的，是我的。',
-        '仰面倒在树根之间。枝叶的缝隙里，月亮若无其事地亮着。',
-        '这棵老树，大概连晃都没晃一下。',
-        '就算已经习惯了死，全速撞树而死，也实在太不像样了。',
+        'barkAhead',
+        'rememberTree',
+        'foreheadHitsTree',
+        'betweenTheRoots',
+        'treeStandsFirm',
+        'undignifiedCrash',
       ],
       repeat: [
-        ['又一次，全速撞上了树干。', '树是不会让路的。这个道理，我好像还没学会。'],
-        ['奔跑的意义是什么。至少不是为了撞树。', '……树皮的纹路，我大概已经能默写出来了。'],
-        ['死因：撞树。和失足比起来，哪个更丢人呢。', '老树在头顶沙沙作响。听起来，有点像在笑。'],
+        ['hitTheTrunkAgain', 'treeWontMove'],
+        ['whyRun', 'barkFromMemory'],
+        ['deathByTree', 'treeSeemsToLaugh'],
       ],
     },
-  }
+  } as const
   const mishapCounts = { fall: 0, tree: 0 }
 
   /**
@@ -348,7 +338,7 @@ export const createStory = ({
     }
     await ui.fade(1, 1.2)
     if (isFirst) {
-      await ui.say('……被搅乱的水面，又静了下来。')
+      await ui.say('waterSettles')
     }
     player.setSitting(false)
     player.teleport(SPAWN.x, SPAWN.z, SPAWN.yaw, SPAWN.pitch)
@@ -366,58 +356,35 @@ export const createStory = ({
   const CLIP_LINES = {
     tree: {
       // 穿进树干、开始往下沉的时候
-      enter: [
-        '……咦？',
-        '没有撞上的感觉。树皮的纹路从眼前滑了过去——是从里面。',
-        '这棵老树的里面，什么都没有。不是树洞的那种空，是根本没有“里面”这回事。',
-        '然后，脚下也空了。不是悬崖。比悬崖还要彻底。',
-      ],
+      enter: ['surprised', 'barkFromInside', 'nothingInside', 'nothingUnderfoot'],
       // 意识到这是同人游戏之后，想到自己是怎么掉出来的
-      cause: [
-        '树的碰撞，大概是做的人在某个深夜随手画下的一个圆。全速撞上去，总有一次会从缝里漏出去。',
-        '这么说来，一次又一次朝同一棵树全速冲过去的——其实不是我吧。',
-      ],
+      cause: ['treeCollisionCircle', 'whoKeepsRunning'],
       repeat: [
-        ['又一次，从树干里穿了过去。', '这里的物理法则，大概也是同人设定。'],
-        ['世界的背面，第二次看还是一样空。', '……下次再撞，记得换一棵树。虽然这里只有这一棵。'],
-        [
-          '往下掉的途中，数了数撞树的次数。',
-          '数到一半就放弃了。这种数字，大概只有屏幕那边的人记得。',
-        ],
+        ['throughTrunkAgain', 'fanGamePhysics'],
+        ['worldStillEmpty', 'tryAnotherTree'],
+        ['countingCrashes', 'stoppedCounting'],
       ],
     },
     fall: {
-      enter: [
-        '……咦？',
-        '着地的冲击，没有来。',
-        '脚底碰到草地的那一下，地面像水面一样，把我吞了进去。',
-        '然后，四周什么都没有了。悬崖的下面，原来还有更下面。',
-      ],
-      cause: [
-        '地面的碰撞，大概是做的人在某个深夜随手铺上去的一层皮。掉得够快，就会直接穿过去。',
-        '这么说来，一次又一次从同一座悬崖上走下去的——其实不是我吧。',
-      ],
+      enter: ['surprised', 'noImpact', 'groundSwallowsMe', 'beneathTheBottom'],
+      cause: ['groundCollisionSkin', 'whoKeepsFalling'],
       repeat: [
-        ['又一次，穿过了崖下的地面。', '摔死和掉出世界，哪个更丢人呢。'],
-        ['悬崖的下面，接着的是世界的背面。', '……这条近路，大概不会写进攻略。'],
-        ['下落，着地，然后接着下落。', '这一次的落地点，好像设在了世界外面。'],
+        ['throughGroundAgain', 'whichFallIsWorse'],
+        ['belowIsWorldsBack', 'shortcutNotInGuide'],
+        ['landAndKeepFalling', 'landingOutsideWorld'],
       ],
     },
     // 两种穿模共用，视线转向头顶的世界之后播放，cause 插在 realize 和 after 之间。
     realize: [
-      '抬头看。山丘、雏菊、那张纸，全都在头顶上。',
-      '从背面看，世界原来这么薄。',
-      { text: '（坐标……）', speaker: '瑚太朗' },
-      '坐标，错开得有点太多了。',
-      '……啊。想起来了。',
-      '这是同人游戏来着。',
+      'everythingAbove',
+      'thinWorld',
+      { text: 'coordinatesThought', speaker: 'kotarou' },
+      'coordinatesTooFar',
+      'rememberGame',
+      'thisIsAFanGame',
     ],
-    after: [
-      '月亮还挂在那里。连世界的背面都照着，真是勤快。',
-      '算了。往下掉的时候，想再多也没用。',
-      '这个问题，做游戏的人好像没打算改。',
-    ],
-  }
+    after: ['moonLightsTheBack', 'noUseThinking', 'authorLeavesBug'],
+  } as const
   const clipCounts = { tree: 0, fall: 0 }
   // 各种穿模已经播放过的短独白段数，用来轮换。
   const clipRepeatCounts = { tree: 0, fall: 0 }
@@ -467,7 +434,7 @@ export const createStory = ({
     }
     await ui.fade(1, 1.6)
     if (isFirst) {
-      await ui.say('……这件事，就别告诉篝了。', { speaker: '瑚太朗' })
+      await ui.say('dontTellKagari', { speaker: 'kotarou' })
     }
     player.teleport(SPAWN.x, SPAWN.z, SPAWN.yaw, SPAWN.pitch)
     post.desat = 0
@@ -482,24 +449,21 @@ export const createStory = ({
     kagari.setLook(1, 6)
     faceKagari(0.8).catch(reportStoryError)
     await tl.wait(0.9)
-    await ui.say('少女用不带感情的眼睛，把我从头顶到脚尖扫了一遍。', { hold: 1.6 })
-    await ui.say('不眨眼，也没有多余的动作，像一幅静止的画。那双眼睛深处，看不到属于人的灯火。')
+    await ui.say('girlLooksMeOver', { hold: 1.6 })
+    await ui.say('stillAsPicture')
     audio.glyph()
     ps.shake = 1.3
     post.aberr = 1.6
-    await ui.say('■', { speaker: '少女', hasGlyphEffect: true, hold: 1.0 })
-    await ui.say('第一次听见的少女的声音，像异国的语言一样在脑中炸开。')
+    await ui.say('unreadableGlyph', { speaker: 'girl', hasGlyphEffect: true, hold: 1.0 })
+    await ui.say('firstVoice')
     audio.glyph()
     ps.shake = 1.6
     post.aberr = 2.2
-    await ui.say('■', { speaker: '少女', hasGlyphEffect: true, hold: 1.0 })
+    await ui.say('unreadableGlyph', { speaker: 'girl', hasGlyphEffect: true, hold: 1.0 })
     S.spikeT = 1
     audio.bristle()
     unlock()
-    ui.narrate([
-      '——头好痛。信息被高密度地折叠在那个声音里，对不成熟的听者来说，就是毒。',
-      { text: '（再靠近的话……）', speaker: '瑚太朗' },
-    ])
+    ui.narrate(['voiceLikePoison', { text: 'anyCloser', speaker: 'kotarou' }])
   }
 
   // ———————————————————— 纸边：看着她 ————————————————————
@@ -507,9 +471,9 @@ export const createStory = ({
     lockForScene(true)
     S.alertT = 0.15
     S.spikeT = 0
-    await ui.say('这个距离，她似乎不再在意了。正好是巨大用纸的外侧。')
-    await ui.say('她用指尖描过纸面。写在那里的图形展开成一条线，又重新聚拢，变成别的图形。')
-    await ui.say('数列与记号，线与边。全部是超出人类智慧的记述，只看得出整体是一张流程图。')
+    await ui.say('safeAtPaperEdge')
+    await ui.say('shapesUnfold')
+    await ui.say('numbersAndSymbols')
     // 盯着看下去，纸面上浮出一棵树形的流程图
     const dizzy = tl.tween(
       5.5,
@@ -521,18 +485,18 @@ export const createStory = ({
       },
       linear,
     )
-    await ui.say('眯起眼睛看，它又像一棵巨大的树。最初只有一条的流，伸出枝条，呈扇形铺开——')
-    await ui.say('（不能再看了。再看下去会疯掉。）', { speaker: '瑚太朗' })
+    await ui.say('theoryLikeTree')
+    await ui.say('mustStopLooking', { speaker: 'kotarou' })
     await dizzy
     post.warp = 0
     post.aberr = 0
     paper.setTheory(0)
-    await ui.say('只拾到一粒信息，里面就装着几千册专业书的分量。那是，生命的理论。')
-    await ui.say('她一刻也不休息。而我，只是看着。')
+    await ui.say('theoryOfLife')
+    await ui.say('sheNeverRests')
     kagari.setTracing(0)
     await tl.wait(1.6)
-    await ui.say('……她的手停住了。很长时间，一动不动。研究并不顺利。')
-    await ui.say('真的，没有我能做的事吗。', { speaker: '瑚太朗' })
+    await ui.say('researchStalls')
+    await ui.say('canIHelp', { speaker: 'kotarou' })
     S.stage = 1
     unlock()
   }
@@ -540,18 +504,18 @@ export const createStory = ({
   const seqCoffeeTrip = async () => {
     lockForScene(false)
     await ui.fade(1, 1.4)
-    await ui.say('想了一会儿，我下到了镇上。')
-    await ui.say('没有一盏灯的街道。水龙头却还出水。久违地磨了咖啡豆，慢慢地滴滤。')
-    await ui.say('把刚泡好的咖啡装进保温瓶，回到山丘上。')
+    await ui.say('downToTown')
+    await ui.say('makingCoffee')
+    await ui.say('coffeeBackToHill')
     items.setThermos(true)
     items.setFull(false)
     items.setPose('hold')
     S.stage = 2
     player.setSitting(true)
-    ui.setTag('三杯咖啡')
+    ui.setTag('threeCups')
     await ui.fade(0, 1.6)
     unlock()
-    ui.card('三杯咖啡', '', 2.2).catch(reportStoryError)
+    ui.card('threeCups', null, 2.2).catch(reportStoryError)
   }
 
   // ———————————————————— 第一杯 ————————————————————
@@ -562,29 +526,29 @@ export const createStory = ({
     audio.pour()
     items.setFull(true)
     items.setPose('offer')
-    await ui.say('往纯白的内杯里倒得满满的，伸长了手臂递过去。这样，就不用踩到纸了。')
+    await ui.say('stretchWithCup')
     kagari.setLook(1, 4)
     await tl.wait(1.1)
-    await ui.say('………', { speaker: '篝', hold: 1.2 })
+    await ui.say('silence', { speaker: 'kagari', hold: 1.2 })
     S.spikeT = 0.7
     S.alertT = 0.45
     audio.bristle()
-    await ui.say('一瞥。周围漂着的缎带，根根倒竖了起来。——今天，没有再凶下去。')
+    await ui.say('ribbonsBristle')
     kagari.setLook(0, 5)
     S.spikeT = 0
     S.alertT = 0
-    await ui.say('她一扭头，回到了图纸上。不需要。态度是这么说的。')
+    await ui.say('turnsAway')
     ps.leanTarget = 0
     items.setPose('drink')
     await tl.wait(1.3)
     items.setFull(false)
-    await ui.say('那就自己喝。……好喝。久违的味道。', { speaker: '瑚太朗' })
+    await ui.say('drinkItMyself', { speaker: 'kotarou' })
     kagari.setLook(1, 2.2)
     items.setPose('hold')
-    await ui.say('我喝咖啡的样子，被她斜着眼看在了眼里。')
+    await ui.say('sidewaysGlance')
     kagari.setLook(0, 3)
     kagari.setTracing(1)
-    await timeSkip(['不属于时间的时间，流了过去。', '她的手再一次停下，主观上已经是几个月之后。'])
+    await timeSkip(['timelessTime', 'monthsLater'])
     kagari.setTracing(0)
     S.stage = 3
     unlock()
@@ -599,43 +563,40 @@ export const createStory = ({
     items.setFull(true)
     items.setPose('offer')
     kagari.setLook(1, 3)
-    await ui.say('不经意间，和她对上了视线。真是稀奇。……请。', { speaker: '瑚太朗' })
+    await ui.say('eyesMeet', { speaker: 'kotarou' })
     kagari.setExpression('stare')
-    await ui.say('她眯起眼睛，凝视着那只杯子。')
+    await ui.say('studiesCup')
     const lapse = tl.tween(
       3.6,
       (_k, raw) => sky.setLapse(Math.sin(raw * Math.PI) ** 2 * 0.8),
       linear,
     )
-    await ui.say('主观时间里，就这样过了大约四天。', { hold: 2.4 })
+    await ui.say('fourDaysPass', { hold: 2.4 })
     await lapse
     sky.setLapse(0)
     kagari.setExpression('neutral')
     const side = kagari.nearerSide(camera.position)
     await handToKagari(side)
-    await ui.say('然后——她接过了杯子。没抱期待的我，屏住了呼吸。')
+    await ui.say('takesCup')
     await ui.fade(1, 0.5)
-    await ui.say('一副“没办法，这浑浊的泥水我就喝给你看吧”的样子，她把嘴凑上了杯沿。')
+    await ui.say('triesMuddyCoffee')
     items.setFull(false)
     await ui.fade(0, 0.7)
-    await ui.say('空了的杯子，被递了回来。')
+    await ui.say('emptyCupBack')
     await handToPlayer(side)
-    await ui.say('是不要了，还是再来一杯？犹豫了一下，我直接去倒第二杯——')
+    await ui.say('pourAnother')
     audio.flick()
     items.jolt()
     ps.shake = 0.6
     S.spikeT = 0.5
-    await ui.say('啪。缎带把保温瓶从我手边弹开了。不要了，的意思。')
+    await ui.say('ribbonFlicksThermos')
     S.spikeT = 0
-    await ui.say('“想用这种饮料讨我欢心，真像下等的人类会想的事。”——那横过来的眼神，像是在这么说。')
-    await ui.say('一点也不觉得难受。她表达了自己的意思。这可是大事件。', { speaker: '瑚太朗' })
+    await ui.say('disdainfulGlance')
+    await ui.say('sheCommunicated', { speaker: 'kotarou' })
     kagari.setLook(0, 3)
     kagari.setTracing(1)
     ps.leanTarget = 0
-    await timeSkip([
-      '然后，不属于时间的时间又流了过去。',
-      '一百年也好，一千年也好，对现在的我没有分别。',
-    ])
+    await timeSkip(['moreTimelessTime', 'centuriesDontMatter'])
     S.stage = 4
     unlock()
   }
@@ -646,24 +607,24 @@ export const createStory = ({
     const side = S.reachSide || kagari.nearerSide(camera.position)
     faceKagari(1.0, -0.15).catch(reportStoryError)
     ps.leanTarget = 0.3
-    await ui.say('啊……马上就好。', { speaker: '瑚太朗', hold: 1.0 })
+    await ui.say('readyInAMoment', { speaker: 'kotarou', hold: 1.0 })
     audio.pour()
     items.setFull(true)
     items.setPose('offer')
-    await ui.say('咖啡像刚煮开一样冒着热气。用发抖的手，把杯子递了过去。')
+    await ui.say('handsTremble')
     await handToKagari(side)
     await ui.fade(1, 0.5)
-    await ui.say('细细的喉咙动了一下。应该很烫，她却毫不在意，一口气喝干了。')
+    await ui.say('drinksInOneGo')
     items.setFull(false)
     await ui.fade(0, 0.7)
     await handToPlayer(side)
-    await ui.say('只有杯子被递了回来。那一刻，手指碰到了。')
+    await ui.say('fingersBrush')
     // 她抓住主角的手，拉了过去
     v2.set(0.05, -0.22, -0.6)
     camera.localToWorld(v2)
     kagari.setReach(side, 1, v2)
     await tl.wait(0.5)
-    await ui.say('突然，她抓住了我的手指。用幼儿般粗鲁的手劲，拉了过去。')
+    await ui.say('shePullsMyHand')
     const x0 = ps.x
     const z0 = ps.z
     const d = Math.hypot(x0, z0) || 1
@@ -674,41 +635,38 @@ export const createStory = ({
       ps.z = z0 - (z0 / d) * pull * k
     })
     S.stage = 5 // 进入阶段 5，允许玩家踏上纸面
-    await ui.say('脚尖，越过了她的领土。')
-    await ui.say('——要被杀掉了吧。我做好了准备。', { hold: 1.5 })
+    await ui.say('crossesHerBorder')
+    await ui.say('bracesForDeath', { hold: 1.5 })
     await tl.wait(1.2)
     paper.ripple()
     audio.open()
-    await ui.say('攻击，没有来。', { hold: 2.0 })
+    await ui.say('noAttack', { hold: 2.0 })
     kagari.setReach(side, 0)
-    await ui.say('篝……？　可、可以吗？', { speaker: '瑚太朗' })
-    await ui.say('………', { speaker: '篝', hold: 1.2 })
-    await ui.say('仅仅三杯咖啡，就拆掉了最后一堵墙。')
-    await ui.say('编织着未知理论的、蓝色的、小小的四边之国。我终于，被请了进来。')
-    await ui.say('没有谎言也没有虚荣的国度。一根比蛛丝还细的、透明的线，连在了我们之间。')
-    await ui.say('不知什么时候，有热的水滴滑过了我的脸颊。')
+    await ui.say('mayIComeIn', { speaker: 'kotarou' })
+    await ui.say('silence', { speaker: 'kagari', hold: 1.2 })
+    await ui.say('lastWallFalls')
+    await ui.say('invitedIntoBlueKingdom')
+    await ui.say('transparentThread')
+    await ui.say('warmTear')
     v2.set(0.02, -0.1, -0.42)
     camera.localToWorld(v2)
     kagari.setReach(side, 1, v2)
-    await ui.say('她用指尖接住那滴水，举到月光下，透着光看。')
+    await ui.say('tearInMoonlight')
     kagari.setReach(side, 0)
     await tl.wait(0.9)
     kagari.setExpression('smile')
     audio.chime()
     await tl.wait(1.6)
-    await ui.say('少女……在笑。', { hold: 2.8 })
-    await ui.say('没有声音，只有表情的微笑。眼睛柔和地细起来，嘴角微微上扬。')
-    await ui.say('篝。你并不是什么无法理解的存在。', { speaker: '瑚太朗', hold: 2.8 })
+    await ui.say('girlSmiles', { hold: 2.8 })
+    await ui.say('quietSmile')
+    await ui.say('iCanUnderstandYou', { speaker: 'kotarou', hold: 2.8 })
     unlock()
     S.glanceHold = 6
     S.glanceTimer = 8
-    ui.setTag('月光散步 · 余韵')
-    ui.card('月光散步', '—— 完 ——\n可以继续留在这座山丘上', 4.2).catch(reportStoryError)
+    ui.setTag('moonwalkEpilogue')
+    ui.card('moonwalk', 'endingCard', 4.2).catch(reportStoryError)
     await tl.wait(7)
-    ui.narrate([
-      '她继续研究，我在一旁守着。这样的状态，一直持续了下去。',
-      '偶尔目光会对上。朝她笑一笑，她就又回到图纸上。很冷淡。但这样就好。',
-    ])
+    ui.narrate(['stayByHerSide', 'occasionalGlances'])
   }
 
   // ———————————————————— 之后：一起喝咖啡 ————————————————————
@@ -723,7 +681,7 @@ export const createStory = ({
     await tl.wait(0.9)
     await handToKagari(side)
     await ui.fade(1, 0.5)
-    await ui.say('有时，两个人一起啜着滚烫的咖啡。像被毯子裹住一样，温暖的体验。')
+    await ui.say('shareWarmCoffee')
     items.setFull(false)
     await ui.fade(0, 0.7)
     await handToPlayer(side)
@@ -748,32 +706,25 @@ export const createStory = ({
       const canSee = kagari.state.canSee
       // 纸边按到纸张外缘的距离算，四条边一视同仁。纸是 7×6 米的斜放矩形，篝偏离中心，她到四边的距离在 2.2 至 4 米之间。
       const isAtEdge = !isOnPaperHere && dPaper < 0.9 && canSee
-      let prompt: string | null = null
+      let prompt: StoryMessageKey | null = null
       let handler: (() => Promise<void>) | null = null
       S.shareCooldown = Math.max(0, S.shareCooldown - dt)
       S.boundaryCooldown = Math.max(0, S.boundaryCooldown - dt)
 
       if (S.stage === 0) {
         if (dK < 29 && once('hill')) {
-          ui.narrate(['白与黑的雏菊开满了山丘，柔柔地接住月光。'])
+          ui.narrate(['hillOfDaisies'])
         }
         if (dK < 17.5 && once('see')) {
           ui.clearNarration()
-          ui.narrate([
-            '然后，她就在那里。山丘的顶上。',
-            '没有桌子也没有椅子的地方，铺着一张纸。大得难以置信，比野餐垫还要大得多。',
-            '在那正中的花芯处，一个少女像在寻找什么似的，伏在纸上。',
-          ])
+          ui.narrate(['girlOnTheHill', 'enormousSheet', 'girlOverPaper'])
         }
         // 缎带：靠近时浮起（带迟滞）
         if (!S.isAlertOn && dK < 11) {
           S.isAlertOn = true
           audio.ribbonRise()
           if (once('ribbon')) {
-            ui.narrate([
-              '明明没有风——系在她两只手腕上的缎带，却轻飘飘地浮了起来。',
-              '那缎带上，栖着一股不祥的气息。',
-            ])
+            ui.narrate(['ribbonsRise', 'ominousRibbons'])
           }
         } else if (S.isAlertOn && dK > 13.5) {
           S.isAlertOn = false
@@ -828,16 +779,16 @@ export const createStory = ({
           }
           if (isAtEdge) {
             if (S.stage === 1) {
-              prompt = '下山，泡一壶咖啡'
+              prompt = 'brewCoffee'
               handler = seqCoffeeTrip
             } else if (S.stage === 2) {
-              prompt = '递出咖啡'
+              prompt = 'offerCoffee'
               handler = seqCup1
             } else if (S.stage === 3) {
-              prompt = '再倒一杯，递过去'
+              prompt = 'offerAnotherCup'
               handler = seqCup2
             } else if (S.stage === 4) {
-              prompt = '倒咖啡'
+              prompt = 'pourCoffee'
               handler = seqCup3
             }
           }
@@ -851,10 +802,7 @@ export const createStory = ({
               S.reachSide = side
               kagari.setLook(1, 2.5)
               if (once('reach')) {
-                ui.narrate([
-                  '回过神来，眼前有一只近乎透明的手，在发着光。',
-                  '手心朝上，笔直地伸向我。像是在索要什么。',
-                ])
+                ui.narrate(['glowingHand', 'outstretchedPalm'])
               }
             } else if (S.reachSide) {
               kagari.setReach(S.reachSide, 0)
@@ -894,11 +842,11 @@ export const createStory = ({
         }
         kagari.setTracing(1)
         if (dK < 2.7 && canSee && S.shareCooldown <= 0) {
-          prompt = '递一杯咖啡'
+          prompt = 'shareCoffee'
           handler = seqShare
         }
         if (ps.isSitting && dK < 3 && once('sitBeside')) {
-          ui.narrate(['在她身旁坐下。理论太过高深，视线自然而然地，被她的侧脸吸了过去。'])
+          ui.narrate(['sitBesideHer'])
         }
       }
       ui.setPrompt(prompt, handler)
@@ -921,7 +869,7 @@ export const createStory = ({
         return
       }
       S.boundaryCooldown = 18
-      ui.narrate(['再往前，就不是“今夜”所在的地方了。'])
+      ui.narrate(['beyondTonight'])
     },
     /**
      * 处理玩家摔死：播放倒地演出和独白，之后送回出生点。

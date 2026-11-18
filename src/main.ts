@@ -18,13 +18,14 @@ import { createRibbons } from './kagari/ribbons.ts'
 import { createPlayer } from './player.ts'
 import { createItems } from './items.ts'
 import { createUI, createLoadingView } from './ui.ts'
+import { bindPageLanguage } from './i18n.ts'
 import { bindSelectSetting, bindRangeSetting } from './settings.ts'
 import { createAudio, preloadBgm } from './audio.ts'
 import { onLoadingProgress, trackLoad, loadingStep, finishLoading } from './loading.ts'
 import { createStory } from './story.ts'
 import { createTimeline } from './util/timeline.ts'
 import { damp } from './util/noise.ts'
-import { getElement, getChild } from './util/dom.ts'
+import { getElement } from './util/dom.ts'
 
 /** 篝面朝西南：主角从南面上山时，正好看见她朝向自己左前方的侧脸 */
 const KAGARI_YAW = THREE.MathUtils.degToRad(-40)
@@ -495,6 +496,7 @@ const boot = async () => {
   })
 }
 
+bindPageLanguage()
 const loadingView = createLoadingView()
 const stopLoadingView = onLoadingProgress(loadingView.update)
 
@@ -505,9 +507,7 @@ requestAnimationFrame(() =>
       boot().catch((error) => {
         console.error('场景加载失败', error)
         stopLoadingView()
-        loadingView.fail('场景加载失败')
-        getChild(getElement('title'), '.desc').textContent =
-          '请检查本地场景素材是否齐全，重启开发服务器后刷新页面。'
+        loadingView.fail()
         getElement('fade').style.opacity = '0'
       }),
     30,

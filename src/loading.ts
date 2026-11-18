@@ -1,11 +1,13 @@
 // 首屏加载进度：把资源下载、模型解析和场景准备合成一条进度。
 
+import { onLocaleChange, translate } from './i18n.ts'
+
 const DOWNLOAD_SHARE = 0.72
 const PARSE_SHARE = 0.1
 const STEPS = [
-  { name: 'build', label: '铺开场景', weight: 0.06 },
-  { name: 'compile', label: '编译着色器', weight: 0.1 },
-  { name: 'frame', label: '点亮第一帧', weight: 0.02 },
+  { name: 'build', label: 'loadingBuild', weight: 0.06 },
+  { name: 'compile', label: 'loadingCompile', weight: 0.1 },
+  { name: 'frame', label: 'loadingFrame', weight: 0.02 },
 ] as const
 
 /** 首屏加载进度快照。 */
@@ -28,7 +30,7 @@ const toMegabytes = (bytes: number) => (bytes / 1048576).toFixed(1)
 
 const snapshot = (): LoadingState => {
   if (isDone) {
-    return { value: 1, label: '准备就绪', isDone: true }
+    return { value: 1, label: translate('loadingReady'), isDone: true }
   }
   const step = STEPS[stepIndex]
   if (step) {
@@ -36,7 +38,7 @@ const snapshot = (): LoadingState => {
     for (const { weight } of STEPS.slice(0, stepIndex)) {
       value += weight
     }
-    return { value, label: `${step.label}…`, isDone: false }
+    return { value, label: translate(step.label), isDone: false }
   }
   let loaded = 0
   let total = 0
@@ -62,9 +64,11 @@ const snapshot = (): LoadingState => {
   const value = DOWNLOAD_SHARE * download + PARSE_SHARE * (readyCount / count)
   let label
   if (download < 1) {
-    label = isByteBased ? `下载资源 ${toMegabytes(loaded)} / ${toMegabytes(total)} MB` : '下载资源…'
+    label = isByteBased
+      ? translate('loadingDownloadBytes', toMegabytes(loaded), toMegabytes(total))
+      : translate('loadingDownload')
   } else {
-    label = `解析模型 ${readyCount} / ${files.length}`
+    label = translate('loadingModels', readyCount, files.length)
   }
   return { value, label, isDone: false }
 }
@@ -77,6 +81,7 @@ const notify = () => {
     fn(state)
   }
 }
+onLocaleChange(notify)
 
 /**
  * 订阅加载进度，订阅时立即以当前状态回调一次，之后每次进度变化都回调。
